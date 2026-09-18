@@ -312,7 +312,7 @@ do_mount() {
 
 do_pacstrap() {
     local pkgs=(base "${CFG[kernel]}" "${CFG[kernel]}-headers"
-                luna-release luna-base luna-cli)
+                luna-keyring luna-release luna-base luna-cli)
     [[ ${CFG[profile]} == desktop ]] && pkgs+=(luna-desktop)
 
     # Микрокод ставим по фактическому производителю процессора: чужой
@@ -322,6 +322,15 @@ do_pacstrap() {
 
     log "pacstrap packages: ${pkgs[*]}"
     run pacstrap -K -C /etc/pacman.conf /mnt "${pkgs[@]}"
+
+    # Ключ Luna в связке целевой системы. Скриптлет luna-keyring это уже
+    # сделал, но только если к моменту его запуска в /mnt успел появиться
+    # pacman-key. Порядок пакетов внутри одной транзакции нам не
+    # подконтролен, поэтому повторяем явно — pacman-key --populate
+    # идемпотентен, лишний запуск ничего не портит.
+    if [[ -f /mnt/usr/share/pacman/keyrings/luna.gpg ]]; then
+        run arch-chroot /mnt pacman-key --populate luna
+    fi
 }
 
 do_configure() {
@@ -363,7 +372,7 @@ do_configure() {
     if [[ -d $REPO_DIR ]]; then
         run mkdir -p /mnt"$REPO_DIR"
         runsh "cp -a '$REPO_DIR'/. /mnt'$REPO_DIR'/"
-        runsh "printf '\n[luna]\nSigLevel = Optional TrustAll\nServer = file://%s\n' '$REPO_DIR' >> /mnt/etc/pacman.conf"
+        runsh "printf '\n[luna]\nSigLevel = Required DatabaseOptional\nServer = file://%s\n' '$REPO_DIR' >> /mnt/etc/pacman.conf"
     fi
 
     # Загрузка в снапшот без hook grub-btrfs-overlayfs даёт систему только

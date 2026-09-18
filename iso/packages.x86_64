@@ -59,6 +59,7 @@ lsscsi
 luna-cli
 luna-desktop
 luna-installer
+luna-keyring
 luna-release
 lvm2
 lynx

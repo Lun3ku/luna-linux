@@ -16,11 +16,15 @@ pacman-key --populate archlinux >/dev/null 2>&1 || true
 pacman -Sy --needed --noconfirm archlinux-keyring
 pacman -Su --noconfirm
 
+# grub стоит на хосте не для загрузки самого хоста: mkarchiso в режиме
+# uefi.grub зовёт grub-install, и без пакета сборка обрывается на проверке
+# профиля.
 msg "Ставлю инструменты сборки"
 pacman -S --needed --noconfirm \
   archiso git base-devel rsync \
   qemu-base qemu-ui-gtk qemu-hw-display-virtio-gpu qemu-hw-display-virtio-gpu-gl qemu-hw-display-virtio-vga qemu-hw-display-virtio-vga-gl virglrenderer edk2-ovmf mtools dosfstools \
-  dialog arch-install-scripts pacman-contrib
+  dialog arch-install-scripts pacman-contrib \
+  grub
 
 msg "Генерирую локаль"
 # Без сгенерированной локали makepkg и bsdtar засыпают вывод сообщениями

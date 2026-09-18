@@ -32,6 +32,35 @@ if bad:
     sys.stderr.write('в файле %d живых глифов приватной области; нужны escape-последовательности' % len(bad))
     sys.exit(1)" "$1"; }
 
+# Подпись пакетов легко выключить случайно: достаточно вернуть TrustAll в
+# одном месте, и проверка молча перестанет что-либо значить. Ищем во всех
+# файлах, где задаётся SigLevel для репозитория luna.
+no_trustall() { python3 -c "
+import sys
+bad=[]
+for path in sys.argv[1:]:
+    for n,line in enumerate(open(path,encoding='utf-8'),1):
+        t=line.strip()
+        if t.startswith('#'): continue
+        if 'SigLevel' in t and 'TrustAll' in t:
+            bad.append('%s:%d: %s' % (path,n,t))
+if bad:
+    sys.stderr.write('проверка подписи выключена: ' + '; '.join(bad))
+    sys.exit(1)" "$@"; }
+# Отпечаток в luna-trusted должен совпадать с ключом в luna.gpg: иначе
+# pacman-key импортирует ключ, но доверия ему не выставит, и подписанные
+# пакеты будут отвергнуты как чужие.
+keyring_match() { python3 -c "
+import subprocess,sys
+d=sys.argv[1]
+want=open(d+'/luna-trusted',encoding='utf-8').read().split(':')[0].strip()
+out=subprocess.run(['gpg','--with-colons','--show-keys',d+'/luna.gpg'],
+                   capture_output=True,text=True).stdout
+got=[l.split(':')[9] for l in out.splitlines() if l.startswith('fpr:')]
+if want not in got:
+    sys.stderr.write('в luna-trusted %s, а в luna.gpg %s' % (want, got))
+    sys.exit(1)" "$1"; }
+
 printf '\033[1;36m==>\033[0m Проверяю конфиги\n'
 check "hyprland.lua"   lua_ok       "$D/hyprland.lua"
 check "config.fish"    fish -n      "$C/config.fish"
@@ -42,6 +71,8 @@ check "greetd live"    toml_ok      "$I/airootfs/etc/greetd/luna.toml"
 check "sudoers live"   visudo -cqf  "$I/airootfs/etc/sudoers.d/10-luna-live"
 check "live-user.sh"   bash -n      "$I/airootfs/usr/local/bin/luna-live-user"
 check "profiledef.sh"  bash -n      "$I/profiledef.sh"
+check "подпись репо"  no_trustall   "$I/pacman.conf" "$LUNA_SRC/pkg/luna-installer/luna-install"
+check "связка ключей" keyring_match "$LUNA_SRC/pkg/luna-keyring"
 
 if (( fail )); then
   printf '\033[1;31m!!!\033[0m Проблем: %d\n' "$fail"; exit 1
