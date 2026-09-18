@@ -96,7 +96,8 @@ A way that needs no browser is grabbing a frame straight out of the running VM:
 ```
 branding/ SVG sources for the splash screens and the logo
 iso/      archiso profile (based on releng)
-pkg/      our own packages: luna-base, luna-cli, luna-desktop, luna-installer, luna-keyring
+pkg/      our own packages: luna-base, luna-cli, luna-desktop, luna-apps,
+          luna-installer, luna-keyring; aur.txt lists the ones built from the AUR
 repo/     the built local pacman repository
 scripts/  building and running
 docs/     notes on the decisions taken
@@ -110,7 +111,14 @@ docs/     notes on the decisions taken
 | `luna-base` | The base (`base`, `base-devel`) and the reliability layer: btrfs + snapper + snap-pac, GRUB + grub-btrfs, zram, systemd-oomd, automatic cache cleanup, mirror refresh. | Installed system only |
 | `luna-cli` | `fish` + `starship` and a modern set of tools with ready-made settings in `/etc/skel`. | Image and installed system |
 | `luna-desktop` | Hyprland, waybar, rofi, mako, the login screen, the theme, the wallpaper. Configs in `/etc/skel`. | Image and installed system |
+| `luna-apps` | The everyday applications: Firefox, the picture, document and video viewers, archives, printing, localsend. Plus the file associations, without which double-clicking a file does nothing. | Installed system only |
 | `luna-keyring` | The public key the `luna-*` packages are signed with. | Image and installed system |
+
+`luna-apps` is installed-system only for the same kind of reason, but the
+other way round: Firefox, the viewers and cups come to some 270 MiB, and the
+live image is for installing rather than for working. The installation is
+online anyway, so those packages cost the image nothing and are fetched when
+the disk is written.
 
 `luna-base` deliberately does **not** go onto the boot image: it pulls in
 `base-devel` (+307 MB), and a compiler is of no use on a live USB stick. That
@@ -157,6 +165,13 @@ The purpose decides the place:
 - **onto the installed machine** goes into `pkg/luna-*/depends.txt`, so that the
   package arrives together with our metapackage and is then updated by an
   ordinary `pacman -Syu`.
+
+If the package is not in the Arch repositories at all, add its name to
+[pkg/aur.txt](pkg/aur.txt) as well. `build-pkgs.sh` clones it from the AUR,
+builds it with the same flags as our own packages, signs it with the same key
+and puts it into the `[luna]` repository - after which it is an ordinary
+dependency like any other. That step is the only part of the build that needs
+network access; `LUNA_SKIP_AUR=1` leaves it out.
 
 After that:
 

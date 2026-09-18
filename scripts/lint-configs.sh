@@ -102,6 +102,7 @@ if bad:
 
 printf '\033[1;36m==>\033[0m Checking the configs\n'
 check "hyprland.lua"   lua_ok       "$D/hyprland.lua"
+check "hypr binds"     python3 "$LUNA_SRC/scripts/check-binds.py" "$D/hyprland.lua"
 check "config.fish"    fish -n      "$C/config.fish"
 check "waybar json"    json_ok      "$D/waybar-config.jsonc"
 check "waybar glyphs"  glyphs_ascii "$D/waybar-config.jsonc"

@@ -6,3 +6,15 @@ enable greetd.service
 # Power profiles. Without the daemon running, the panel control has nothing to
 # talk to and the laptop stays on whatever the firmware chose.
 enable power-profiles-daemon.service
+
+# Bluetooth. bluez, its tools and blueman were all installed and the panel had
+# a bluetooth button, while bluetoothd was never started by anything - so on a
+# freshly installed system Bluetooth simply did not work.
+#
+# Safe to enable unconditionally. The unit carries
+# ConditionPathIsDirectory=/sys/class/bluetooth, so on a machine with no
+# adapter it is skipped rather than failed, and systemd's own udev rule
+# (99-systemd.rules) pulls bluetooth.target in when an adapter appears. A
+# desktop with no Bluetooth starts nothing; plug a dongle into it and the
+# daemon comes up by itself.
+enable bluetooth.service
