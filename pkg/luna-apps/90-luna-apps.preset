@@ -1,0 +1,10 @@
+# Installing cups is not the same as being able to print: the daemon is off
+# until something enables it, and a printer plugged into a machine with cups
+# installed but not running looks exactly like a printer that is not supported.
+#
+# The socket rather than the service on purpose - cups is socket-activated, so
+# it starts on the first print job and is not running the rest of the time.
+#
+# Applied on the installed system by systemctl preset-all, which the installer
+# runs at the end (see do_services in luna-install).
+enable cups.socket

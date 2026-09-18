@@ -25,6 +25,7 @@
     "modules-right": [
         "privacy",
         "systemd-failed-units",
+        "hyprland/language",
         "wireplumber",
         "network",
         "bluetooth",
@@ -75,6 +76,20 @@
         "format-ok": "",
         "system": true,
         "user": true
+    },
+
+    // The keyboard layout. Two of them are set up in hyprland.lua, us and
+    // ru, switched with Alt+Shift - and with no indicator the only way to
+    // find out which one is live is to type something and look at it.
+    //
+    // The field is shortDescription, which gives "en" and "ru". The
+    // plainer {short} prints the layout name itself, "us", which is not
+    // what anyone reads off a panel. Both were checked against the
+    // waybar-hyprland-language(5) page.
+    "hyprland/language": {
+        "format": "{shortDescription}",
+        "tooltip-format": "{long}",
+        "on-click": "hyprctl switchxkblayout all next"
     },
 
     "wireplumber": {

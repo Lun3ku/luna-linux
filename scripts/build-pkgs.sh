@@ -5,6 +5,10 @@
 #   build-pkgs.sh              build every package
 #   build-pkgs.sh luna-base    build only the ones named
 #
+# Packages listed in pkg/aur.txt are built from the AUR in the same run and
+# signed with the same key. LUNA_SKIP_AUR=1 leaves them out, which is what to
+# do when there is no network: the AUR step needs one, the rest does not.
+#
 # Every package is signed with the Luna key. The key is created by
 # scripts/make-signing-key.sh; its secret half lives only in ~builder/.gnupg
 # on this machine, and the backup copy is in E:\Luna-Linux-Keys.
@@ -16,6 +20,7 @@ BUILD="$LUNA_WORK/pkgbuild"
 REPO="$LUNA_WORK/repo"
 REPO_DB="$REPO/luna.db.tar.gz"
 KEYRING_DIR="$LUNA_SRC/pkg/luna-keyring"
+AUR_LIST="$LUNA_SRC/pkg/aur.txt"
 
 msg() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m!!!\033[0m %s\n' "$*" >&2; exit 1; }
@@ -46,9 +51,33 @@ fi
 
 msg "Signing with key $FPR"
 
-names=("$@")
-if [[ ${#names[@]} -eq 0 ]]; then
+# --- what to build ----------------------------------------------------------
+aur_all=()
+if [[ -f $AUR_LIST ]]; then
+  mapfile -t aur_all < <(grep -vE '^[[:space:]]*(#|$)' "$AUR_LIST" | awk '{print $1}')
+fi
+
+is_aur() {
+  local want=$1 have
+  for have in "${aur_all[@]}"; do [[ $have == "$want" ]] && return 0; done
+  return 1
+}
+
+names=()      # ours, from pkg/<name>/PKGBUILD
+aur_names=()  # somebody else's, cloned from the AUR
+if (( $# )); then
+  # Named on the command line: each one is sorted into the right list, so that
+  # build-pkgs.sh yay-bin does what it looks like it should.
+  for arg in "$@"; do
+    if is_aur "$arg"; then aur_names+=("$arg"); else names+=("$arg"); fi
+  done
+else
   mapfile -t names < <(cd "$LUNA_SRC/pkg" && ls -1d */ | tr -d '/')
+  aur_names=("${aur_all[@]}")
+fi
+if [[ -n ${LUNA_SKIP_AUR:-} ]] && (( ${#aur_names[@]} )); then
+  msg "LUNA_SKIP_AUR is set - skipping ${aur_names[*]}"
+  aur_names=()
 fi
 
 # The repository is owned by builder because repo-add runs as builder. Root can
@@ -56,25 +85,23 @@ fi
 install -d -o builder -g builder "$BUILD" "$REPO"
 chown -R builder:builder "$REPO"
 
-for name in "${names[@]}"; do
-  src="$LUNA_SRC/pkg/$name"
-  [[ -f "$src/PKGBUILD" ]] || die "No PKGBUILD: $src"
-
-  msg "Building $name"
-  # Build on ext4: makepkg sets file permissions, and DrvFs has none.
-  rm -rf "$BUILD/$name"
-  install -d "$BUILD/$name"
-  cp -rT "$src" "$BUILD/$name"
-  chown -R builder:builder "$BUILD/$name"
-
-  # -d (--nodeps): the dependencies of our packages are what the installed
-  # system needs, not what the build host needs. Without this flag makepkg
-  # would try to drag the whole of Hyprland in here.
-  # --sign --key: the signature is written next to the package as a .sig file.
-  # The key has no passphrase, so the build never stops to ask.
-  sudo -u builder env -C "$BUILD/$name" makepkg -f -d --noconfirm --clean --sign --key "$FPR"
-
-  built=$(find "$BUILD/$name" -maxdepth 1 -name '*.pkg.tar.*' ! -name '*.sig' -printf '%p\n' | head -n1)
+# Moves a freshly built package out of its build directory and into the
+# repository. Shared by both loops below: getting this right for our own
+# packages and wrong for the AUR ones would be a quiet way to end up with
+# unsigned packages in a repository that is supposed to have none.
+publish() { # name build-dir
+  local name=$1 dir=$2 built n
+  # The name is matched as <name>-<version> rather than as "the first package
+  # file in the directory". makepkg also writes a separate -debug package
+  # beside the real one whenever the build host has debug symbols switched on,
+  # and the first run of this put yay-bin-debug into the repository in place of
+  # yay-bin: eight kilobytes of debug symbols where the AUR helper should have
+  # been. The build reported success and the database counted nine signed
+  # packages, while yay simply did not exist. A version always begins with a
+  # digit, which is what tells the two names apart.
+  n=$(find "$dir" -maxdepth 1 -name "$name-[0-9]*.pkg.tar.*" ! -name '*.sig' | wc -l)
+  (( n == 1 )) || die "$name: expected one package file, found $n"
+  built=$(find "$dir" -maxdepth 1 -name "$name-[0-9]*.pkg.tar.*" ! -name '*.sig' -printf '%p\n')
   [[ -n "$built" ]] || die "$name: the package did not build"
   [[ -f "$built.sig" ]] || die "$name: the package built without a signature"
 
@@ -94,7 +121,58 @@ for name in "${names[@]}"; do
   rm -f "/var/cache/pacman/pkg/$(basename "$built")" "/var/cache/pacman/pkg/$(basename "$built").sig"
 
   msg "  -> $(basename "$built") + signature"
+}
+
+for name in "${names[@]}"; do
+  src="$LUNA_SRC/pkg/$name"
+  [[ -f "$src/PKGBUILD" ]] || die "No PKGBUILD: $src"
+
+  msg "Building $name"
+  # Build on ext4: makepkg sets file permissions, and DrvFs has none.
+  rm -rf "$BUILD/$name"
+  install -d "$BUILD/$name"
+  cp -rT "$src" "$BUILD/$name"
+  chown -R builder:builder "$BUILD/$name"
+
+  # -d (--nodeps): the dependencies of our packages are what the installed
+  # system needs, not what the build host needs. Without this flag makepkg
+  # would try to drag the whole of Hyprland in here.
+  # --sign --key: the signature is written next to the package as a .sig file.
+  # The key has no passphrase, so the build never stops to ask.
+  sudo -u builder env -C "$BUILD/$name" makepkg -f -d --noconfirm --clean --sign --key "$FPR"
+
+  publish "$name" "$BUILD/$name"
 done
+
+# --- the ones from the AUR --------------------------------------------------
+# Cloned fresh every time rather than updated in place. An AUR repository is a
+# few kilobytes, and a fresh clone has no update path that can go wrong: no
+# rebase, no stale branch, nothing left behind from a debugging session.
+AURDIR="$BUILD/aur"
+if (( ${#aur_names[@]} )); then
+  install -d -o builder -g builder "$AURDIR"
+fi
+for name in "${aur_names[@]}"; do
+  msg "Building $name from the AUR"
+  rm -rf "${AURDIR:?}/$name"
+  sudo -u builder git clone --quiet --depth 1 \
+    "https://aur.archlinux.org/$name.git" "$AURDIR/$name" \
+    || die "$name: could not be cloned from the AUR.
+       That step needs network access. Without one, build with
+       LUNA_SKIP_AUR=1 - none of the other packages need it."
+  [[ -f "$AURDIR/$name/PKGBUILD" ]] || die "$name: no PKGBUILD in the AUR repository"
+
+  # The same flags as our own packages, for the same reasons. makepkg checks
+  # the downloaded binary against the sums in the PKGBUILD before unpacking it.
+  sudo -u builder env -C "$AURDIR/$name" makepkg -f -d --noconfirm --clean --sign --key "$FPR"
+
+  publish "$name" "$AURDIR/$name"
+done
+
+# Debug packages are of no use on the image and only take up room, so any that
+# appeared are dropped before the database is built. This also clears out the
+# ones left behind by earlier builds.
+find "$REPO" -maxdepth 1 -name '*-debug-[0-9]*.pkg.tar.*' -delete
 
 msg "Updating the repository in $REPO"
 mapfile -t pkgfiles < <(find "$REPO" -maxdepth 1 -name '*.pkg.tar.*' ! -name '*.sig' | sort)

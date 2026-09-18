@@ -14,8 +14,11 @@ depends=($(grep -vE '^[[:space:]]*(#|$)' "$startdir/depends.txt" | awk '{print $
 source=('config.fish'
         'starship.toml'
         'fastfetch.jsonc'
-        'luna-logo.txt')
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
+        'luna-logo.txt'
+        'luna-tldr-update.service'
+        'luna-tldr-update.timer'
+        '90-luna-cli.preset')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
   # The configs go into /etc/skel: every new user receives them, and from then
@@ -30,4 +33,21 @@ package() {
   # distribution rather than by the user. Its colours are given as the markers
   # $1 and $2, which keeps the file plain text with no escape sequences.
   install -Dm644 "$srcdir/luna-logo.txt" "$pkgdir/usr/share/luna/logo.txt"
+
+  # Keeping the tldr cache filled. These are user units rather than system
+  # ones: tealdeer keeps its cache in ~/.cache, so the update has to run as the
+  # user who will read it.
+  install -Dm644 "$srcdir/luna-tldr-update.service" \
+    "$pkgdir/usr/lib/systemd/user/luna-tldr-update.service"
+  install -Dm644 "$srcdir/luna-tldr-update.timer" \
+    "$pkgdir/usr/lib/systemd/user/luna-tldr-update.timer"
+  install -Dm644 "$srcdir/90-luna-cli.preset" \
+    "$pkgdir/usr/lib/systemd/user-preset/90-luna-cli.preset"
+
+  # The same belt and braces as in luna-desktop: a preset is only applied by
+  # systemctl --user preset-all, so the enabled state is shipped as a symlink
+  # as well. systemd reads .wants out of /usr/lib too.
+  install -d "$pkgdir/usr/lib/systemd/user/timers.target.wants"
+  ln -s ../luna-tldr-update.timer \
+    "$pkgdir/usr/lib/systemd/user/timers.target.wants/luna-tldr-update.timer"
 }

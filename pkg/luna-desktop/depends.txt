@@ -27,6 +27,10 @@ hypridle                      # automatic lock and screen blanking when idle
 hyprshutdown                  # the shutdown menu
 hyprsunset                    # night mode, warmer colours in the evening
 hyprpicker                    # colour picker
+jq                            # luna-keys reads the binding list out of
+                              # hyprctl -j with it
+libnotify                     # notify-send; luna-night reports through
+                              # it, and plenty of applications expect it
 
 # --- clipboard and screenshots ---
 wl-clipboard

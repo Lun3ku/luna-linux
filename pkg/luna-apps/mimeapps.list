@@ -1,0 +1,48 @@
+# Which program opens what. Lives in /etc/skel, so every new user gets a copy
+# and can then change it freely - the file is theirs from that point on.
+#
+# The names on the right are the .desktop files the packages ship; they were
+# read out of the packages rather than guessed, because a wrong name here
+# fails silently, exactly like having no association at all.
+[Default Applications]
+image/png=imv.desktop
+image/jpeg=imv.desktop
+image/gif=imv.desktop
+image/webp=imv.desktop
+image/bmp=imv.desktop
+image/tiff=imv.desktop
+image/svg+xml=imv.desktop
+image/avif=imv.desktop
+
+application/pdf=org.pwmt.zathura.desktop
+application/epub+zip=org.pwmt.zathura.desktop
+application/postscript=org.pwmt.zathura.desktop
+
+video/mp4=mpv.desktop
+video/x-matroska=mpv.desktop
+video/webm=mpv.desktop
+video/quicktime=mpv.desktop
+video/x-msvideo=mpv.desktop
+audio/mpeg=mpv.desktop
+audio/flac=mpv.desktop
+audio/ogg=mpv.desktop
+audio/x-wav=mpv.desktop
+audio/opus=mpv.desktop
+
+application/zip=xarchiver.desktop
+application/x-tar=xarchiver.desktop
+application/gzip=xarchiver.desktop
+application/x-xz=xarchiver.desktop
+application/zstd=xarchiver.desktop
+application/x-7z-compressed=xarchiver.desktop
+application/vnd.rar=xarchiver.desktop
+application/x-bzip2=xarchiver.desktop
+
+text/html=firefox.desktop
+x-scheme-handler/http=firefox.desktop
+x-scheme-handler/https=firefox.desktop
+
+inode/directory=thunar.desktop
+text/plain=org.xfce.mousepad.desktop
+application/x-shellscript=org.xfce.mousepad.desktop
+text/markdown=org.xfce.mousepad.desktop

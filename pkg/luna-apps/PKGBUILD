@@ -1,0 +1,25 @@
+# Maintainer: Luna Linux
+pkgname=luna-apps
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Everyday applications for Luna Linux, and the file associations for them"
+arch=('any')
+url="https://github.com/luna-linux"
+license=('GPL-3.0-or-later')
+
+depends=($(grep -vE '^[[:space:]]*(#|$)' "$startdir/depends.txt" | awk '{print $1}'))
+
+source=('mimeapps.list'
+        '90-luna-apps.preset')
+sha256sums=('SKIP' 'SKIP')
+
+package() {
+  # Installing a viewer is not the same as a file opening. Without these
+  # associations, double-clicking a PNG in Thunar still does nothing: the
+  # desktop has no idea which of the installed programs to use.
+  install -Dm644 "$srcdir/mimeapps.list" "$pkgdir/etc/skel/.config/mimeapps.list"
+
+  # Printing works out of the box, see the comment in the preset.
+  install -Dm644 "$srcdir/90-luna-apps.preset" \
+    "$pkgdir/usr/lib/systemd/system-preset/90-luna-apps.preset"
+}

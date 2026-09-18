@@ -17,9 +17,12 @@ source=('hyprland.lua'
         'luna-session'
         'luna-wallpaper'
         'luna-wallpaper.service'
+        'luna-keys'
+        'luna-night'
         'hypridle.conf'
         'hyprlock.conf'
         'hyprpaper.conf'
+        'hyprsunset.conf'
         'waybar-config.jsonc'
         'waybar-style.css'
         'mako-config'
@@ -30,8 +33,8 @@ source=('hyprland.lua'
         '90-luna-desktop.preset'
         'greetd-luna.toml'
         'greetd-override.conf')
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
-            'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
+            'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
   # User configs go into /etc/skel. A new user receives a copy, after which the
@@ -42,6 +45,7 @@ package() {
   install -Dm644 "$srcdir/hypridle.conf" "$skel/hypr/hypridle.conf"
   install -Dm644 "$srcdir/hyprlock.conf" "$skel/hypr/hyprlock.conf"
   install -Dm644 "$srcdir/hyprpaper.conf" "$skel/hypr/hyprpaper.conf"
+  install -Dm644 "$srcdir/hyprsunset.conf" "$skel/hypr/hyprsunset.conf"
 
   install -Dm644 "$srcdir/waybar-config.jsonc" "$skel/waybar/config.jsonc"
   install -Dm644 "$srcdir/waybar-style.css"    "$skel/waybar/style.css"
@@ -56,6 +60,10 @@ package() {
   install -Dm755 "$srcdir/luna-wallpaper" "$pkgdir/usr/bin/luna-wallpaper"
   # A session is always started through uwsm - see the comment in the script.
   install -Dm755 "$srcdir/luna-session" "$pkgdir/usr/bin/luna-session"
+  # The key cheat sheet and the night-mode switch, both bound to keys in
+  # hyprland.lua and both usable by hand.
+  install -Dm755 "$srcdir/luna-keys"  "$pkgdir/usr/bin/luna-keys"
+  install -Dm755 "$srcdir/luna-night" "$pkgdir/usr/bin/luna-night"
   install -Dm644 "$srcdir/luna-wallpaper.service"     "$pkgdir/usr/lib/systemd/user/luna-wallpaper.service"
 
   # The presets: the system one enables the login screen, the user one the
@@ -76,7 +84,7 @@ package() {
   local wants="$pkgdir/usr/lib/systemd/user/graphical-session.target.wants"
   install -d "$wants"
   local unit
-  for unit in waybar mako luna-wallpaper hypridle hyprpolkitagent cliphist; do
+  for unit in waybar mako luna-wallpaper hypridle hyprpolkitagent cliphist hyprsunset; do
     ln -s "../${unit}.service" "$wants/${unit}.service"
   done
 }

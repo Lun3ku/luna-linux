@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Turns the blue-light filter on or off by hand, outside the evening schedule
+# in hyprsunset.conf.
+#
+# hyprsunset itself has no toggle: over IPC one can set a temperature or reset
+# to the current profile, and there is no reliable way to ask it "are you warm
+# right now". So the state is kept here, in a file under XDG_RUNTIME_DIR. That
+# directory is wiped when the session ends, which is also when hyprsunset is
+# restarted - so the mark and reality cannot drift apart across a login.
+set -euo pipefail
+
+state="${XDG_RUNTIME_DIR:-/tmp}/luna-night.on"
+temp="${LUNA_NIGHT_TEMP:-4000}"
+
+say() {
+    # The notification is a nicety, not a requirement.
+    command -v notify-send >/dev/null 2>&1 || return 0
+    notify-send -a Luna -t 2000 "$1" "$2"
+}
+
+if [[ -e $state ]]; then
+    # reset puts the screen back under the control of the schedule rather than
+    # forcing it to daylight: at half past nine in the evening the right answer
+    # is still warm.
+    hyprctl hyprsunset reset >/dev/null
+    rm -f "$state"
+    say "Night mode off" "Back to the schedule"
+else
+    hyprctl hyprsunset temperature "$temp" >/dev/null
+    : > "$state"
+    say "Night mode on" "Screen temperature ${temp}K"
+fi

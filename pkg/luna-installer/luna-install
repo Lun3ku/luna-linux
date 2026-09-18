@@ -493,7 +493,10 @@ do_mount() {
 do_pacstrap() {
     local pkgs=(base "${CFG[kernel]}" "${CFG[kernel]}-headers"
                 luna-keyring luna-release luna-base luna-cli)
-    [[ ${CFG[profile]} == desktop ]] && pkgs+=(luna-desktop)
+    # luna-apps is separate from luna-desktop because of its weight: a browser,
+    # the viewers and cups come to some 270 MiB, which is why they are
+    # installed onto the disk rather than carried on the image.
+    [[ ${CFG[profile]} == desktop ]] && pkgs+=(luna-desktop luna-apps)
     # The encrypt hook of mkinitcpio comes from cryptsetup, and without it on
     # the target the initramfs cannot open the container it just created.
     [[ ${CFG[encrypt]} == yes ]] && pkgs+=(cryptsetup)

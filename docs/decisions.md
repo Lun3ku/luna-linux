@@ -1159,3 +1159,143 @@ Two things worth keeping from the method:
   a running system is measured after the interesting moment has passed; reading
   the powered-off disk from the host is what showed that the write had been
   fine all along.
+
+## The AUR, built and signed like everything else
+
+yay and localsend are both things the system is expected to have, and neither
+is in the Arch repositories. That is a circular problem in yay's case in
+particular: the usual way to install something from the AUR is to use an AUR
+helper, and the helper is the thing being installed.
+
+So they are built here. `pkg/aur.txt` lists them, `build-pkgs.sh` clones each
+one from the AUR, builds it with the same flags as our own packages and signs
+it with the same key, and the result goes into the `[luna]` repository that the
+installer uses. From the installed system they are ordinary signed packages
+from a configured repository.
+
+Two decisions inside that:
+
+**They are declared as dependencies, not named in the installer.** `yay-bin` is
+a dependency of `luna-cli`, `localsend-bin` of `luna-apps`. A package that says
+what it needs is easier to reason about than an installer with a growing list
+of package names in it, and it means removing `luna-apps` takes localsend with
+it.
+
+**The `-bin` variants, deliberately.** An AUR PKGBUILD is somebody else's code
+and makepkg runs it; the `-bin` packages unpack a released binary instead of
+building from source, which is a much smaller thing to be running. makepkg
+checks the download against the sha256 sums in the PKGBUILD before it unpacks
+anything.
+
+The AUR step is the only part of the build that needs network access, so
+`LUNA_SKIP_AUR=1` turns it off without touching the rest.
+
+## A debug package took the place of yay
+
+The first AUR build finished cleanly. The log said nine packages and nine
+signatures. The repository listing looked right at a glance, and yay did not
+exist.
+
+What was in the repository was `yay-bin-debug-13.0.1-1-x86_64.pkg.tar.zst`:
+eight kilobytes of debug symbols sitting where a 4.7 MiB AUR helper should have
+been.
+
+makepkg writes a separate `-debug` package next to the real one whenever the
+build host has debug symbols switched on, so the build directory held two
+packages. The code that moved a finished package into the repository was this:
+
+```bash
+built=$(find "$dir" -maxdepth 1 -name '*.pkg.tar.*' ! -name '*.sig' | head -n1)
+```
+
+"The first package file in the directory" - and `find` returns directory order,
+which is not alphabetical and not anything else worth relying on. It happened
+to hand back the debug package.
+
+Nothing downstream could catch it. The signature was real, `repo-add` recorded
+it, the count of signed packages matched the count of packages, and every check
+that exists passed. The only symptom would have been `yay: command not found`
+on an installed system, a week later.
+
+The fix matches the package by name rather than by position, which is what the
+cleanup line four lines below was already doing:
+
+```bash
+find "$dir" -maxdepth 1 -name "$name-[0-9]*.pkg.tar.*" ! -name '*.sig'
+```
+
+A version always starts with a digit, so `yay-bin-13.0.1` matches and
+`yay-bin-debug-13.0.1` does not. The count is checked too: anything other than
+exactly one match is now an error rather than a coin toss. Debug packages are
+deleted from the repository before the database is built, since they are of no
+use on the image.
+
+The lesson is the one this project keeps relearning: a check that counts things
+cannot see which things it counted.
+
+## Night mode is a schedule, not a shortcut
+
+hyprsunset was already installed and did nothing, because nothing started it.
+It could have been put on a key, but a blue-light filter that has to be
+remembered every evening is a feature only in the sense that it exists.
+
+It runs as a service now, with the schedule in
+`~/.config/hypr/hyprsunset.conf`: daylight from 07:00, 4000K from 21:00. On
+start it applies whichever profile is current, so turning the machine on at
+midnight already gets the warm screen. `Super+N` (`luna-night`) forces it on or
+off in between.
+
+Two details found by reading rather than guessing:
+
+- The config keys were taken from the wiki after `strings` on the binary showed
+  `profile`, `time`, `temperature` and `max-gamma` but no filename at all - the
+  path is composed at runtime. Guessing a key name here fails silently, which
+  is the same failure mode as everything else in this file.
+- `gamma` is left alone. It can push perceived brightness below the monitor's
+  own minimum, which is useful on a desktop screen, but it costs colour
+  accuracy, and on a laptop `brightnessctl` already goes low enough.
+
+hyprsunset works through the output's gamma table rather than a shader over the
+screen, so the warm tint does not appear in screenshots or recordings. A shader
+would tint them orange.
+
+`luna-night` keeps its state in a file under `XDG_RUNTIME_DIR` because
+hyprsunset has no toggle and no reliable way to be asked "are you warm right
+now". That directory is wiped when the session ends, which is also when
+hyprsunset restarts - so the mark and reality cannot drift apart across a
+login.
+
+## Two bindings on one key
+
+`Super+L` locked the screen. `Super+L` also moved focus to the right, from the
+vim-style `hjkl` block added later. Both bindings were live at once.
+
+Which one Hyprland runs is not something worth depending on, and of the two,
+the one that must not misfire is the lock. The vim `l` is gone; `h`, `j` and
+`k` stay, and focus to the right is still on `Super+Right`, which was always
+bound. The comment in `hyprland.lua` says why, so the gap does not look like an
+oversight to the next person to read it.
+
+Found by reading the file for something else entirely, which is the usual way.
+
+## Two more checks, and one that nearly checked nothing
+
+`lint-configs.sh` grew a check that every shell script Luna ships parses, and
+one that every file named in a PKGBUILD `source=()` actually exists with a
+matching number of `sha256sums`. The second one was written directly after
+adding three files to a `source=()` array by hand.
+
+Both were tested against deliberate breakage before being trusted - a missing
+source file, a mismatched sum count - because a check that cannot fail is worse
+than no check, it is a check that lies.
+
+The script check in particular came close to being exactly that. It finds its
+own inputs:
+
+```bash
+grep -rl '^#!.*bash' "$LUNA_SRC/pkg" "$LUNA_SRC/iso" "$LUNA_SRC/scripts"
+```
+
+If that had matched nothing, the loop would have run zero times, returned 0 and
+printed OK for ever. It was run on its own to confirm it finds 22 scripts,
+including the two written that evening.

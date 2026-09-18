@@ -61,6 +61,45 @@ if want not in got:
     sys.stderr.write('luna-trusted says %s, luna.gpg says %s' % (want, got))
     sys.exit(1)" "$1"; }
 
+# Every shell script that gets shipped, checked for syntax. These are not
+# configs, but they fail the same way: nothing goes wrong at build time and
+# the mistake only shows up on somebody's installed system.
+scripts_ok() {
+  local f rc=0
+  while IFS= read -r f; do
+    head -1 "$f" | grep -q bash || continue
+    bash -n "$f" || rc=1
+  done < <(grep -rl '^#!.*bash' "$LUNA_SRC/pkg" "$LUNA_SRC/iso" "$LUNA_SRC/scripts" 2>/dev/null)
+  return $rc
+}
+# A PKGBUILD that lists a file which is not there fails in the middle of a
+# build, after everything before it has already been rebuilt. And sha256sums
+# has to be exactly as long as source, or makepkg refuses the lot.
+pkg_sources() { python3 -c "
+import sys, os, re
+bad = []
+for d in sys.argv[1:]:
+    text = open(os.path.join(d, 'PKGBUILD'), encoding='utf-8').read()
+    def array(name):
+        i = text.find(name + '=(')
+        if i < 0:
+            return None
+        return re.findall(chr(39) + '([^' + chr(39) + ']*)' + chr(39),
+                          text[i:text.find(')', i)])
+    src = array('source')
+    if src is None:
+        continue
+    for f in src:
+        if not os.path.exists(os.path.join(d, f)):
+            bad.append('%s: source %s does not exist' % (os.path.basename(d), f))
+    sums = array('sha256sums')
+    if sums is not None and len(sums) != len(src):
+        bad.append('%s: %d sources but %d sha256sums'
+                   % (os.path.basename(d), len(src), len(sums)))
+if bad:
+    sys.stderr.write('; '.join(bad))
+    sys.exit(1)" "$@"; }
+
 printf '\033[1;36m==>\033[0m Checking the configs\n'
 check "hyprland.lua"   lua_ok       "$D/hyprland.lua"
 check "config.fish"    fish -n      "$C/config.fish"
@@ -73,6 +112,8 @@ check "live-user.sh"   bash -n      "$I/airootfs/usr/local/bin/luna-live-user"
 check "profiledef.sh"  bash -n      "$I/profiledef.sh"
 check "repo signing"   no_trustall   "$I/pacman.conf" "$LUNA_SRC/pkg/luna-installer/luna-install"
 check "keyring match"  keyring_match "$LUNA_SRC/pkg/luna-keyring"
+check "shell scripts"  scripts_ok
+check "pkgbuild files" pkg_sources "$LUNA_SRC"/pkg/*/
 
 if (( fail )); then
   printf '\033[1;31m!!!\033[0m Problems: %d\n' "$fail"; exit 1

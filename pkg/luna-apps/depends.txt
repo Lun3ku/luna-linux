@@ -1,0 +1,39 @@
+# luna-apps - the programs a desktop is expected to already have.
+#
+# This is a separate package, and installed-system only, for one reason:
+# size. The applications below weigh about 270 MiB compressed, while the
+# release ISO has around 100 MiB of headroom under GitHub's 2 GiB limit per
+# file. The live image is for installing, not for working, so they go on the
+# installed system and stay off the image.
+#
+# What this fixes is the plainest kind of papercut: before it, double-clicking
+# a picture, a PDF, a video or a zip in the file manager did nothing at all,
+# because nothing was installed to open them with.
+
+# --- browser ---
+firefox
+
+# --- opening the files people actually have ---
+imv                  # images; tiny, wayland-native
+zathura              # documents
+zathura-pdf-mupdf    # ... the PDF backend for it, which zathura needs to be useful
+mpv                  # video and audio
+xarchiver            # archives
+mousepad             # a graphical text editor; 1.4 MiB, because the XFCE
+                     # libraries are already here for Thunar
+thunar-archive-plugin # "Extract here" in the file manager's context menu
+
+# --- printing ---
+# Plugging in a printer and having it work is the whole point; without cups
+# there is not even a queue to print to.
+cups
+system-config-printer
+
+# --- screen recording ---
+# grim and slurp already cover still screenshots; this is the moving kind.
+wf-recorder
+
+# --- from the AUR ---
+# Sending a file to a phone without a cable, an account or a cloud in between.
+# Built and signed by scripts/build-pkgs.sh, see pkg/aur.txt.
+localsend-bin

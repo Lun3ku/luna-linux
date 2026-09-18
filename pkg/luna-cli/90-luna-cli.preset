@@ -1,0 +1,10 @@
+# The user units that come with the terminal set.
+#
+# Only the timer is enabled. The service it starts has no [Install] section of
+# its own precisely so that it cannot be enabled by accident and run at every
+# login instead of once a week.
+#
+# As with luna-desktop, the package also ships a .wants symlink under
+# /usr/lib/systemd/user, because a preset only takes effect if somebody runs
+# systemctl --user preset-all.
+enable luna-tldr-update.timer

@@ -1,0 +1,19 @@
+[Unit]
+# tldr shows a handful of worked examples instead of a whole man page, which is
+# one of the nicer things in the terminal set - but on a fresh system its cache
+# is empty, and the very first "tldr tar" answers with an error instead of an
+# answer. This fills it once, quietly, in the background.
+Description=Fill the tldr example cache
+After=network-online.target
+Wants=network-online.target
+
+# No [Install] section on purpose: the unit is started by
+# luna-tldr-update.timer, and that is the only thing that should be enabled.
+# With a WantedBy here it would also run on every single login.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/tldr --update
+# Nothing here is worth slowing a login down for.
+Nice=10
+IOSchedulingClass=idle

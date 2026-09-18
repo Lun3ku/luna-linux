@@ -17,6 +17,9 @@ enable luna-wallpaper.service
 enable hypridle.service
 enable hyprpolkitagent.service
 enable cliphist.service
+# Night mode. The unit comes from the hyprsunset package itself; the schedule
+# it follows is ours, in ~/.config/hypr/hyprsunset.conf.
+enable hyprsunset.service
 # blueman-applet is deliberately left out: without a bluetooth adapter the unit
 # simply fails and spoils the failed-service count on the panel. Anyone who
 # wants the applet can run

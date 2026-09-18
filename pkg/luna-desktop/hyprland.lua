@@ -226,13 +226,25 @@ hl.bind(mod .. " + SHIFT + S", hl.dsp.exec_cmd(screenArea))
 hl.bind("Print",               hl.dsp.exec_cmd(screenFull))
 hl.bind(mod .. " + SHIFT + C", hl.dsp.exec_cmd("hyprpicker -a"))
 
--- Focus: with the arrow keys and with the vim hjkl layout
+-- Tools
+-- Super+/ lists the key bindings, asking the running compositor rather
+-- than a cheat sheet kept by hand, so it cannot go stale.
+-- Super+N forces night mode on or off outside the evening schedule.
+hl.bind(mod .. " + slash", hl.dsp.exec_cmd("luna-keys"))
+hl.bind(mod .. " + N",     hl.dsp.exec_cmd("luna-night"))
+
+-- Focus: with the arrow keys and with the vim hjk layout.
+--
+-- There is no Super+L here, and that is on purpose rather than an
+-- oversight: the same key already locks the screen a few lines above.
+-- Two bindings on one key is not a thing Hyprland resolves in any way
+-- worth relying on, and of the two, locking is the one that must not
+-- misfire. Focus to the right is still on Super+Right.
 hl.bind(mod .. " + left",  hl.dsp.focus({ direction = "left" }))
 hl.bind(mod .. " + right", hl.dsp.focus({ direction = "right" }))
 hl.bind(mod .. " + up",    hl.dsp.focus({ direction = "up" }))
 hl.bind(mod .. " + down",  hl.dsp.focus({ direction = "down" }))
 hl.bind(mod .. " + H",     hl.dsp.focus({ direction = "left" }))
-hl.bind(mod .. " + L",     hl.dsp.focus({ direction = "right" }))
 hl.bind(mod .. " + K",     hl.dsp.focus({ direction = "up" }))
 hl.bind(mod .. " + J",     hl.dsp.focus({ direction = "down" }))
 

@@ -25,3 +25,11 @@ curl
 unzip
 p7zip
 rsync
+
+# --- from the AUR ---
+# Built and signed by scripts/build-pkgs.sh out of pkg/aur.txt, and installed
+# from the [luna] repository like everything else. It is listed as a dependency
+# rather than named in the installer so that the package itself says what it
+# needs. A system with no AUR helper cannot install an AUR helper without
+# building one by hand, which is a silly place to leave somebody.
+yay-bin              # AUR helper

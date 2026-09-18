@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Shows the current key bindings.
+#
+# The list is read from Hyprland itself with "hyprctl binds", not from a file
+# kept alongside the config. A cheat sheet maintained by hand drifts from
+# reality the first time somebody edits a binding and forgets the sheet; this
+# one cannot, because it asks the running compositor what is actually bound.
+set -euo pipefail
+
+mod_name() {
+    # Hyprland reports modifiers as a bitmask. 64 is SUPER, 8 is ALT,
+    # 4 is CTRL, 1 is SHIFT.
+    local m=$1 out=""
+    (( m & 64 )) && out+="Super+"
+    (( m & 4 ))  && out+="Ctrl+"
+    (( m & 8 ))  && out+="Alt+"
+    (( m & 1 ))  && out+="Shift+"
+    printf '%s' "$out"
+}
+
+list() {
+    local mods key dispatcher arg
+    hyprctl binds -j | jq -r '.[] | [.modmask, .key, .dispatcher, .arg] | @tsv' |
+    while IFS=$'\t' read -r mods key dispatcher arg; do
+        printf '%-22s %s %s\n' "$(mod_name "$mods")${key}" "$dispatcher" "$arg"
+    done | sort
+}
+
+if command -v rofi >/dev/null 2>&1 && [[ -n ${WAYLAND_DISPLAY:-} ]]; then
+    list | rofi -dmenu -i -p "Keys" -no-custom
+else
+    list
+fi

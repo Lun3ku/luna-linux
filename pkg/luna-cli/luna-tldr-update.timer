@@ -1,0 +1,14 @@
+[Unit]
+Description=Refresh the tldr example cache weekly
+
+[Timer]
+# Two minutes after the session starts, so the first fill happens soon after
+# the very first login but not while the desktop is still coming up.
+OnBootSec=2min
+OnUnitActiveSec=1w
+# If the machine was off when the week was up, catch up at the next boot
+# instead of skipping the update entirely.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

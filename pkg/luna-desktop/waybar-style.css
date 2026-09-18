@@ -43,6 +43,7 @@ window#waybar {
 #window,
 #privacy,
 #systemd-failed-units,
+#language,
 #wireplumber,
 #network,
 #bluetooth,
@@ -66,6 +67,7 @@ window#waybar {
 #bluetooth,
 #power-profiles-daemon,
 #privacy,
+#language,
 #systemd-failed-units {
     min-width: 18px;
     padding: 0 10px;
@@ -125,6 +127,11 @@ window#waybar.empty #window {
     color: @accent;
     font-weight: 600;
 }
+
+/* The layout indicator is deliberately plain white: it sits next to the
+ * cyan volume pill, and a second cyan pill beside it would read as one
+ * wide block rather than two separate things. */
+#language { color: @text; }
 
 #wireplumber { color: @cyan; }
 #wireplumber.muted { color: @subtext; }
