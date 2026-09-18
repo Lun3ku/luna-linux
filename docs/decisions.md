@@ -850,3 +850,69 @@ not boot", explains nothing. What explained it was the pattern of the damage:
 **what exactly was destroyed and what survived**. Both copies of the GPT zeroed
 while the filesystems were alive is the signature of one specific command, and
 it named the culprit immediately.
+
+## First install on real hardware: two messages, one of them ours
+
+Luna was installed on a laptop, outside QEMU for the first time. The
+installation went through and the installed system works. Two things appeared
+on screen along the way, neither of which stopped anything.
+
+### The GRUB serial error was ours, and QEMU hid it
+
+Before the menu drew, with a beep:
+
+```
+error: term/serial.c:grub_cmd_serial:278:serial port 'com0' isn't found.
+```
+
+The cause was in our own `iso/grub/grub.cfg`, inherited from releng:
+
+```
+if serial --unit=0 --speed=115200; then
+```
+
+A modern laptop has no physical COM port, so the command fails. The
+surrounding `if` keeps the config from aborting, but it does **not** suppress
+the message: GRUB prints the error when the command runs, and only afterwards
+is the exit status swallowed. A conditional guards control flow, not output.
+
+Two things are worth keeping from this.
+
+**It was introduced by the switch to GRUB.** While the UEFI menu was drawn by
+systemd-boot, this `grub.cfg` was dead weight that nothing read. Moving UEFI to
+GRUB for the sake of 261 MiB put the file into service and its serial block
+with it. A change that removes one problem can hand a dormant file a new job.
+
+**The test environment was gentler than reality.** QEMU provides a serial port,
+so `serial --unit=0` succeeded in every run we made, and the error could not
+appear. A virtual machine is not a weaker version of real hardware; it is
+different hardware, and it can be missing exactly the defect you would want to
+find. Here it was the other way round: the VM *had* something a laptop does
+not.
+
+The block was removed. In this profile `grub.cfg` is the UEFI path only (BIOS
+boots through syslinux), so it could never have done anything but fail on the
+hardware Luna is aimed at. The comment left in its place carries the block for
+anyone who does need a GRUB serial console.
+
+### The ACPI errors are the laptop's firmware, not ours
+
+After choosing Luna in the menu:
+
+```
+ACPI BIOS Error (bug): Attempt to CreateField of length zero (20260408/dsopcode-133)
+ACPI Error: Aborting method \_SB.WMID.WQBC due to previous error (AE_AML_OPERAND_VALUE)
+ACPI BIOS Error (bug): Attempt to CreateField of length zero (20260408/dsopcode-133)
+ACPI Error: Aborting method \_SB.WMID.WQBE due to previous error (AE_AML_OPERAND_VALUE)
+```
+
+The `(bug)` in the first line is the kernel stating plainly that the defect is
+in the firmware's ACPI tables. `\_SB.WMID.WQBC` and `WQBE` are WMI methods,
+which is how a vendor exposes hardware data. These lines appear on that laptop
+under any Linux distribution and are fixed only by a BIOS update from the
+vendor. Nothing to do on our side.
+
+Hiding them with `quiet loglevel=3` on the live entry was considered and
+rejected: it would hide genuine kernel errors along with them, and archiso
+shows boot messages deliberately.
+
