@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Снимок экрана работающей в QEMU виртуалки через сокет QMP.
-# Нужен, чтобы проверять графическую часть дистрибутива, не полагаясь
-# на то, что кто-то смотрит в окно.
+# Takes a screenshot of a VM running under QEMU through the QMP socket.
+# It exists so the graphical side of the distribution can be checked without
+# relying on somebody watching the window.
 #
-#   vm-screenshot.sh [путь.png]
+#   vm-screenshot.sh [path.png]
 set -euo pipefail
 
 QMP_SOCK=${QMP_SOCK:-/var/luna/qmp.sock}
 OUT=${1:-/var/luna/screenshot.png}
 
-[[ -S "$QMP_SOCK" ]] || { printf 'QMP-сокет не найден: %s (виртуалка запущена?)\n' "$QMP_SOCK" >&2; exit 1; }
+[[ -S "$QMP_SOCK" ]] || { printf 'QMP socket not found: %s (is the VM running?)\n' "$QMP_SOCK" >&2; exit 1; }
 
 python3 - "$QMP_SOCK" "$OUT" <<'EOF'
 import json, socket, sys
@@ -26,11 +26,11 @@ def call(cmd, **args):
         msg["arguments"] = args
     f.write(json.dumps(msg) + "\n")
     f.flush()
-    # Между ответами QEMU шлёт асинхронные события — их пропускаем.
+    # QEMU sends asynchronous events between replies; skip them.
     while True:
         line = f.readline()
         if not line:
-            raise RuntimeError("QMP закрыл соединение")
+            raise RuntimeError("QMP closed the connection")
         reply = json.loads(line)
         if "event" in reply:
             continue
@@ -38,8 +38,8 @@ def call(cmd, **args):
             raise RuntimeError(reply["error"].get("desc", reply["error"]))
         return reply.get("return")
 
-f.readline()            # приветствие сервера
+f.readline()            # the server greeting
 call("qmp_capabilities")
 call("screendump", filename=out, format="png")
-print(f"снимок сохранён: {out}")
+print(f"screenshot saved: {out}")
 EOF

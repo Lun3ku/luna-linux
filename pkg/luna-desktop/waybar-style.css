@@ -1,13 +1,13 @@
-/* Оформление панели Luna Linux.
- * Палитра совпадает с hyprland.lua, mako и rofi — меняешь здесь,
- * меняй и там.
+/* The styling of the Luna Linux panel.
+ * The palette matches hyprland.lua, mako and rofi - change it here and
+ * change it there too.
  *
- * Про геометрию. Все плашки намеренно одного роста и с одинаковыми
- * отступами: раньше блок рабочих столов занимал всю высоту полосы и
- * выглядел тяжёлым квадратом рядом с маленькими значками. Высота
- * задаётся через margin сверху и снизу, а не через height — GTK сам
- * центрирует содержимое по вертикали, и глифы с разными метриками
- * перестают "плавать". */
+ * About the geometry. Every pill is deliberately the same height with the
+ * same padding: the workspace block used to take up the full height of the
+ * bar and looked like a heavy square next to the small icons. The height is
+ * set through top and bottom margins rather than through height - GTK then
+ * centres the contents vertically by itself, and glyphs with different
+ * metrics stop "floating". */
 
 @define-color base     #12111a;
 @define-color surface  #1b1926;
@@ -29,15 +29,15 @@
     min-height: 0;
 }
 
-/* Сама полоса прозрачная: видимыми делаем отдельные группы модулей,
- * так панель не выглядит тяжёлой плашкой во всю ширину экрана. */
+/* The bar itself is transparent: the individual module groups are what is
+ * made visible, so the panel does not look like a heavy slab across the screen. */
 window#waybar {
     background: transparent;
     color: @text;
 }
 
-/* Общая форма всех плашек. Вертикальный margin даёт одинаковый рост
- * и отступ от края полосы. */
+/* The common shape of every pill. The vertical margin gives them the same
+ * height and the same gap from the edge of the bar. */
 #workspaces,
 #submap,
 #window,
@@ -54,13 +54,13 @@ window#waybar {
     border-radius: 10px;
 }
 
-/* Модули из одного значка без текста легко выходят узкими и рваными —
- * задаём им минимальную ширину, чтобы ряд читался ровным.
+/* Modules that are a single icon with no text easily come out narrow and
+ * ragged, so they get a minimum width to keep the row looking even.
  *
- * Если значок съезжает по вертикали, шрифт тут ни при чём: пробовали
- * вариант Nerd Font Mono, не помогло. Дело в самом глифе — у части иконок
- * Font Awesome рисунок смещён относительно базовой линии. Лечится заменой
- * глифа на другой, а круглые (часы, глобус) садятся ровно всегда. */
+ * If an icon sits off-centre vertically, the font is not to blame: the Nerd
+ * Font Mono variant was tried and did not help. It is the glyph itself - some
+ * Font Awesome icons are drawn offset from the baseline. The cure is a
+ * different glyph; round ones (clock, globe) always sit correctly. */
 #network,
 #bluetooth,
 #privacy,
@@ -69,7 +69,7 @@ window#waybar {
     padding: 0 10px;
 }
 
-/* --- Рабочие столы --- */
+/* --- Workspaces --- */
 
 #workspaces {
     padding: 0 4px;
@@ -85,7 +85,7 @@ window#waybar {
     transition: background-color 180ms ease, color 180ms ease;
 }
 
-/* Пустой стол виден, но приглушён: понятно, что слот есть и он свободен. */
+/* An empty workspace is visible but dimmed: the slot is clearly there and free. */
 #workspaces button.empty {
     color: @overlay;
 }
@@ -106,13 +106,13 @@ window#waybar {
     background-color: @red;
 }
 
-/* --- Остальные модули --- */
+/* --- The other modules --- */
 
 #window {
     color: @subtext;
 }
 
-/* Когда окон нет, заголовок не должен занимать место пустой плашкой. */
+/* With no windows open, the title must not take up space as an empty pill. */
 window#waybar.empty #window {
     background-color: transparent;
 }
@@ -134,8 +134,8 @@ window#waybar.empty #window {
 #battery.charging { color: @cyan; }
 #battery.warning:not(.charging) { color: @yellow; }
 
-/* Критический заряд мигает — единственная анимация в панели,
- * и она нужна, чтобы это нельзя было не заметить. */
+/* A critical charge blinks - the only animation in the panel, and it is there
+ * so that it cannot be missed. */
 #battery.critical:not(.charging) {
     color: @red;
     animation: blink 1s steps(2, start) infinite;
@@ -148,7 +148,7 @@ window#waybar.empty #window {
 #privacy { color: @yellow; }
 #systemd-failed-units { color: @red; }
 
-/* Когда всё в порядке, модуль ничего не показывает и не занимает места. */
+/* When all is well, the module shows nothing and takes up no space. */
 #systemd-failed-units.ok {
     min-width: 0;
     padding: 0;
@@ -156,10 +156,10 @@ window#waybar.empty #window {
     background-color: transparent;
 }
 
-/* У лотка фона нет намеренно. Пока в нём нет элементов, плашка всё равно
- * рисовалась бы — и справа от часов висела бы кнопка без иконки,
- * назначение которой не угадать. Значки приложений, когда появятся,
- * нормально читаются и без подложки. */
+/* The tray has no background on purpose. While it holds no items the pill
+ * would still be drawn, and a button with no icon would hang to the right of
+ * the clock with no way to guess what it is for. Application icons, once they
+ * appear, read perfectly well without a backdrop. */
 #tray {
     margin: 5px 3px;
     padding: 0;

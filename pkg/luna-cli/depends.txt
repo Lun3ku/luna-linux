@@ -1,17 +1,17 @@
-# luna-cli — вменяемый терминал из коробки.
-fish                 # оболочка с автодополнением без настройки
-starship             # приглашение
+# luna-cli is a sane terminal out of the box.
+fish                 # a shell that completes without being configured
+starship             # the prompt
 eza                  # ls
-bat                  # cat с подсветкой
+bat                  # cat with highlighting
 ripgrep              # grep
 fd                   # find
-fzf                  # интерактивный поиск
-zoxide               # умный cd
+fzf                  # interactive search
+zoxide               # a cd that learns
 git-delta            # diff
-btop                 # монитор процессов
-yazi                 # файловый менеджер в терминале
-fastfetch            # информация о системе
-tealdeer             # tldr — примеры вместо man
+btop                 # process monitor
+yazi                 # file manager in the terminal
+fastfetch            # system information
+tealdeer             # tldr - examples instead of man
 dust                 # du
 duf                  # df
 jq

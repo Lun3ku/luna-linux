@@ -2,14 +2,14 @@
 pkgname=luna-release
 pkgver=0.1.0
 pkgrel=1
-pkgdesc="Идентификация системы Luna Linux"
+pkgdesc="Luna Linux system identity"
 arch=('any')
 url="https://github.com/luna-linux"
 license=('GPL-3.0-or-later')
 
-# Ни от чего не зависит сознательно: этот пакет должен попадать и на
-# загрузочный образ, где компилятор и снапшоты не нужны. Всю тяжёлую
-# базу тянет luna-base, который зависит от этого пакета.
+# It deliberately depends on nothing: this package has to fit on the boot image
+# too, where a compiler and snapshots are of no use. All the heavy base is
+# pulled in by luna-base, which depends on this package.
 depends=()
 
 install="$pkgname.install"

@@ -1,26 +1,26 @@
-# /etc/os-release — это симлинк, который не принадлежит ни одному пакету
-# (владелец /usr/lib/os-release — пакет filesystem). Поэтому свой файл
-# кладём рядом как os-release-luna и переставляем симлинк — так pacman
-# не ругается на конфликт файлов.
+# /etc/os-release is a symlink that belongs to no package (/usr/lib/os-release
+# is owned by the filesystem package). So our own file is placed next to it as
+# os-release-luna and the symlink is repointed, which keeps pacman from
+# complaining about a file conflict.
 #
-# Заодно это чинит приветствие при входе: /etc/issue содержит
-# \S{PRETTY_NAME}, то есть берёт имя системы прямо из os-release.
+# This also fixes the login greeting: /etc/issue contains \S{PRETTY_NAME}, that
+# is, it takes the system name straight out of os-release.
 
 _link_os_release() {
   ln -sfn /usr/lib/os-release-luna /etc/os-release
 }
 
-# Luna англоязычная, и ей нужна сгенерированная en_US.UTF-8.
+# Luna is English-speaking and needs a generated en_US.UTF-8.
 #
-# Без неё система остаётся с одними C/C.utf8/POSIX, и это ломает больше,
-# чем кажется: модуль часов waybar отключается с ошибкой
-# «locale::facet::_S_create_c_locale name not valid», ломаются сортировка
-# и форматирование дат.
+# Without it the system is left with nothing but C/C.utf8/POSIX, and that
+# breaks more than it seems: the waybar clock module switches itself off with
+# "locale::facet::_S_create_c_locale name not valid", and sorting and date
+# formatting break too.
 #
-# Правка /etc/locale.gen — единственный надёжный путь: механизма drop-in
-# у glibc нет, а локали, созданные напрямую через localedef, затираются
-# при следующем locale-gen. Файл помечен как backup у glibc, поэтому наша
-# правка переживает обновления.
+# Editing /etc/locale.gen is the only dependable way: glibc has no drop-in
+# mechanism, and locales created directly with localedef are wiped by the next
+# locale-gen. The file is marked as backup by glibc, so our edit survives
+# updates.
 _ensure_locale() {
   if locale -a 2>/dev/null | grep -qix 'en_US.utf8'; then
     return
@@ -42,6 +42,7 @@ post_upgrade() {
 }
 
 pre_remove() {
-  # Возвращаем штатный симлинк Arch, иначе система останется без os-release.
+  # Put Arch's own symlink back, otherwise the system is left with no
+  # os-release at all.
   ln -sfn ../usr/lib/os-release /etc/os-release
 }

@@ -1,5 +1,5 @@
-# Приглашение Luna Linux: две строки, чтобы длинные пути не съедали
-# место под команду, и ничего лишнего.
+# The Luna Linux prompt: two lines, so that long paths do not eat the room
+# meant for the command, and nothing beyond that.
 add_newline = true
 
 format = """

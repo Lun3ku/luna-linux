@@ -1,8 +1,8 @@
-# luna-installer — TUI-установщик.
-dialog               # псевдо-GUI в терминале
+# luna-installer is the TUI installer.
+dialog               # the pseudo-GUI in the terminal
 arch-install-scripts # pacstrap, genfstab, arch-chroot
-gptfdisk             # sgdisk для автоматической разметки
+gptfdisk             # sgdisk, for automatic partitioning
 parted
-dosfstools           # mkfs.fat для ESP
+dosfstools           # mkfs.fat for the ESP
 btrfs-progs
 util-linux           # cfdisk, lsblk

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Ставит обои Luna Linux.
+# Sets the Luna Linux wallpaper.
 #
-# Почему swaybg, а не hyprpaper: hyprpaper 0.8.4 падает с SIGSEGV, если в
-# системе нет работающего EGL — то есть в любой виртуалке без проброса GPU,
-# причём падает и на собственных обоях Hyprland. swaybg рисует через cairo
-# и обычные буферы wl_shm, поэтому работает всегда.
-# hyprpaper остаётся установленным: у кого есть GPU и нужен IPC — может
-# переключиться, см. docs/decisions.md.
+# Why swaybg and not hyprpaper: hyprpaper 0.8.4 crashes with SIGSEGV when the
+# system has no working EGL, which means in any virtual machine without a GPU
+# passed through, and it crashes even on Hyprland's own wallpaper. swaybg draws
+# through cairo and ordinary wl_shm buffers, so it always works.
+# hyprpaper stays installed: anyone with a GPU who wants IPC control can switch
+# to it, see docs/decisions.md.
 #
-# Свои обои: положить путь к картинке в ~/.config/luna/wallpaper и выполнить
+# Your own wallpaper: put the path to an image in ~/.config/luna/wallpaper and run
 #     systemctl --user restart luna-wallpaper
 set -euo pipefail
 
@@ -18,8 +18,8 @@ CONF="${XDG_CONFIG_HOME:-$HOME/.config}/luna/wallpaper"
 img=$DEFAULT
 if [[ -r $CONF ]]; then
   candidate=$(head -n1 "$CONF")
-  # Если в файле написана ерунда, лучше показать дефолтные обои,
-  # чем оставить человека с чёрным экраном.
+  # If the file contains nonsense, showing the default wallpaper beats leaving
+  # somebody with a black screen.
   [[ -n $candidate && -r $candidate ]] && img=$candidate
 fi
 

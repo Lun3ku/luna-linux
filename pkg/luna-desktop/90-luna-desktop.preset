@@ -1,4 +1,4 @@
-# Системные сервисы рабочего стола Luna Linux.
-# Экран входа. Юнит конфликтует с getty@tty1 — это штатно, greetd
-# занимает первую консоль вместо обычного приглашения логина.
+# The system services of the Luna Linux desktop.
+# The login screen. The unit conflicts with getty@tty1, which is intended:
+# greetd takes over the first console instead of the usual login prompt.
 enable greetd.service

@@ -1,36 +1,37 @@
 #!/usr/bin/env bash
-# Установщик Luna Linux.
+# The Luna Linux installer.
 #
-# Интерфейс — dialog: полноэкранные окна, меню и кнопки в терминале.
-# Тексты интерфейса английские, как и вся система; комментарии русские,
-# они для того, кто правит этот файл.
+# The interface is dialog: full-screen windows, menus and buttons in a terminal.
+# The interface text is English, like the rest of the system, and so are the
+# comments, which are here for whoever edits this file.
 #
-# Раскладка диска, которую ставит установщик:
+# The disk layout the installer creates:
 #
-#   ESP (fat32, 1 ГиБ)  -> /efi        только для UEFI
-#   btrfs (всё остальное)
+#   ESP (fat32, 1 GiB)  -> /efi        UEFI only
+#   btrfs (everything else)
 #       @         -> /
 #       @home     -> /home
 #       @snapshots-> /.snapshots
 #       @log      -> /var/log
 #       @pkg      -> /var/cache/pacman/pkg
 #
-# /boot намеренно лежит ВНУТРИ btrfs, а не на ESP: grub-btrfs грузится в
-# снапшот, а для этого ядро и модули должны попадать в снимок вместе с
-# системой. GRUB 2.14 читает btrfs со сжатием zstd (в btrfs.mod есть
-# grub_btrfs_zstd_decompress), так что сжатие этому не мешает.
+# /boot deliberately lives INSIDE btrfs rather than on the ESP: grub-btrfs
+# boots into a snapshot, and for that the kernel and the modules have to be
+# captured in the snapshot along with the system. GRUB 2.14 reads btrfs with
+# zstd compression (btrfs.mod contains grub_btrfs_zstd_decompress), so the
+# compression does not get in the way.
 #
-# Раздела подкачки нет: своп даёт zram из luna-base — быстрее и не изнашивает диск.
+# There is no swap partition: swap comes from zram in luna-base, which is faster and spares the disk.
 set -euo pipefail
 
 BACKTITLE="Luna Linux Installer"
-# Своя палитра вместо стандартной сине-голубой: dialog знает только восемь
-# базовых имён цветов, но терминал отображает их палитрой Luna.
+# Our own palette instead of the standard blue one: dialog knows only eight
+# basic colour names, but the terminal renders them with the Luna palette.
 export DIALOGRC=${DIALOGRC:-/usr/share/luna/dialogrc}
 LOG=/var/log/luna-install.log
-REPO_DIR=/usr/share/luna/repo          # локальный репозиторий на образе
+REPO_DIR=/usr/share/luna/repo          # the local repository on the image
 
-# Сюда собираем ответы пользователя.
+# The user's answers are collected here.
 declare -A CFG=(
     [disk]="" [esp]="" [root]="" [scheme]=""
     [hostname]="luna" [user]="" [password]=""
@@ -40,10 +41,11 @@ declare -A CFG=(
 log()  { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >> "$LOG"; }
 die()  { dialog --backtitle "$BACKTITLE" --title "Error" --msgbox "$1" 10 64; exit 1; }
 
-# Обёртка над dialog: единый стиль и возврат текста без лишних кавычек.
+# A wrapper around dialog: one consistent style, and the text returned
+# without stray quoting.
 d() { dialog --backtitle "$BACKTITLE" --no-shadow "$@" 3>&1 1>&2 2>&3; }
 
-# Отмена на любом экране — выход, а не проваливание дальше с пустым ответом.
+# Cancel on any screen means quitting, not falling through with an empty answer.
 cancel_guard() {
     [[ $1 -eq 0 ]] && return 0
     clear
@@ -58,7 +60,7 @@ require_root() {
 is_uefi() { [[ -d /sys/firmware/efi/efivars ]]; }
 
 #---------------------------------------------------------------------------
-# Экраны
+# Screens
 #---------------------------------------------------------------------------
 
 screen_welcome() {
@@ -83,10 +85,10 @@ screen_keymap() {
 
 screen_timezone() {
     local region city
-    # UTC лежит файлом в корне zoneinfo, а не каталогом, поэтому в общий
-    # список регионов он не попадает — добавляем его отдельным пунктом.
-    # --no-tags убирает вторую колонку: у этих меню подпись совпадает со
-    # значением, и дублирование только засоряло экран.
+    # UTC sits in the root of zoneinfo as a file rather than a directory, so it
+    # never appears in the general list of regions; it is added as its own entry.
+    # --no-tags removes the second column: in these menus the label equals the
+    # value, and the duplication only cluttered the screen.
     region=$(d --title "Time zone" --no-tags --menu "\nRegion:" 18 60 8 \
         UTC "UTC (no local time zone)" \
         $(find /usr/share/zoneinfo -mindepth 1 -maxdepth 1 -type d -printf '%f %f\n' \
@@ -105,7 +107,7 @@ screen_timezone() {
 
 screen_disk() {
     local items=() name size model
-    # Только настоящие диски: без разделов, CD-ROM и loop-устройств образа.
+    # Real disks only: no partitions, no CD-ROM and no loop devices of the image.
     while read -r name size model; do
         items+=("/dev/$name" "$size  ${model:-unknown}")
     done < <(lsblk -dpno NAME,SIZE,MODEL --nodeps 2>/dev/null \
@@ -129,7 +131,7 @@ screen_scheme() {
     fi
 }
 
-# Ручная разметка: отдаём человеку cfdisk, потом спрашиваем, что есть что.
+# Manual partitioning: hand cfdisk to the user, then ask what is what.
 screen_manual_partitions() {
     d --title "cfdisk" --msgbox "\n\
 cfdisk will open now for ${CFG[disk]}.\n\n\
@@ -232,13 +234,13 @@ Writing starts now. Data on the disk will be lost.\n" 20 66
 }
 
 #---------------------------------------------------------------------------
-# Установка
+# Installation
 #---------------------------------------------------------------------------
 
 FAILMARK=/run/luna-install.failed
 
-# Любая упавшая команда останавливает установку с понятным следом в журнале.
-# Внутри конвейера с gauge обычный set -e не сработал бы.
+# Any failed command stops the installation and leaves a clear trace in the log.
+# Inside the gauge pipeline an ordinary set -e would not fire.
 run() {
     log "RUN: $*"
     if ! "$@" >>"$LOG" 2>&1; then
@@ -248,7 +250,7 @@ run() {
     fi
 }
 
-# То же, но для строки, которую надо выполнить оболочкой.
+# The same, but for a string that has to be run by a shell.
 runsh() {
     log "SH: $1"
     if ! bash -c "$1" >>"$LOG" 2>&1; then
@@ -274,7 +276,7 @@ do_partition() {
         CFG[esp]=$(part_of "$d" 1)
         CFG[root]=$(part_of "$d" 2)
     else
-        # GPT + GRUB на BIOS требует отдельного раздела для образа загрузчика.
+        # GPT + GRUB on BIOS needs a separate partition for the bootloader image.
         run sgdisk -n 1:0:+1M -t 1:ef02 -c 1:"BIOS boot" "$d"
         run sgdisk -n 2:0:0    -t 2:8304 -c 2:"Luna root" "$d"
         CFG[root]=$(part_of "$d" 2)
@@ -287,7 +289,7 @@ do_format() {
     [[ -n ${CFG[esp]} ]] && run mkfs.fat -F32 -n LUNA_EFI "${CFG[esp]}"
     run mkfs.btrfs -f -L Luna "${CFG[root]}"
 
-    # Подтома создаём на «голом» корне, потом перемонтируем уже по subvol.
+    # The subvolumes are created on the bare root, then remounted by subvol.
     run mount "${CFG[root]}" /mnt
     local sv
     for sv in @ @home @snapshots @log @pkg; do
@@ -297,8 +299,8 @@ do_format() {
 }
 
 do_mount() {
-    # compress=zstd:3 — заметная экономия места почти без затрат процессора.
-    # noatime убирает запись времени доступа при каждом чтении.
+    # compress=zstd:3 saves a noticeable amount of space at almost no CPU cost.
+    # noatime removes an access-time write on every read.
     local o="noatime,compress=zstd:3"
     run mount -o "$o,subvol=@" "${CFG[root]}" /mnt
     run mkdir -p /mnt/{home,.snapshots,var/log,var/cache/pacman/pkg,efi}
@@ -315,19 +317,19 @@ do_pacstrap() {
                 luna-keyring luna-release luna-base luna-cli)
     [[ ${CFG[profile]} == desktop ]] && pkgs+=(luna-desktop)
 
-    # Микрокод ставим по фактическому производителю процессора: чужой
-    # просто занимал бы место и путал вывод загрузчика.
+    # The microcode matches the actual CPU vendor: the other one would merely
+    # take up space and confuse the bootloader output.
     if grep -qi 'GenuineIntel' /proc/cpuinfo; then pkgs+=(intel-ucode)
     elif grep -qi 'AuthenticAMD' /proc/cpuinfo; then pkgs+=(amd-ucode); fi
 
     log "pacstrap packages: ${pkgs[*]}"
     run pacstrap -K -C /etc/pacman.conf /mnt "${pkgs[@]}"
 
-    # Ключ Luna в связке целевой системы. Скриптлет luna-keyring это уже
-    # сделал, но только если к моменту его запуска в /mnt успел появиться
-    # pacman-key. Порядок пакетов внутри одной транзакции нам не
-    # подконтролен, поэтому повторяем явно — pacman-key --populate
-    # идемпотентен, лишний запуск ничего не портит.
+    # The Luna key in the target keyring. The luna-keyring scriptlet has done
+    # this already, but only if pacman-key had appeared in /mnt by the time it
+    # ran. The order of packages within a single transaction is not ours to
+    # control, so we repeat it explicitly - pacman-key --populate is
+    # idempotent and an extra run spoils nothing.
     if [[ -f /mnt/usr/share/pacman/keyrings/luna.gpg ]]; then
         run arch-chroot /mnt pacman-key --populate luna
     fi
@@ -339,7 +341,7 @@ do_configure() {
     run arch-chroot /mnt ln -sf "/usr/share/zoneinfo/${CFG[timezone]}" /etc/localtime
     run arch-chroot /mnt hwclock --systohc
 
-    # Локаль: en_US.UTF-8 уже включает luna-release, здесь только страхуемся.
+    # Locale: luna-release already enables en_US.UTF-8; this is a safety net.
     runsh "sed -i 's/^#\(en_US\.UTF-8 UTF-8\)/\1/' /mnt/etc/locale.gen"
     run arch-chroot /mnt locale-gen
     runsh "echo 'LANG=en_US.UTF-8' > /mnt/etc/locale.conf"
@@ -348,37 +350,37 @@ do_configure() {
     runsh "echo '${CFG[hostname]}' > /mnt/etc/hostname"
     runsh "printf '127.0.0.1 localhost\n::1 localhost\n127.0.1.1 %s.localdomain %s\n' '${CFG[hostname]}' '${CFG[hostname]}' > /mnt/etc/hosts"
 
-    # Пользователь. Оболочка fish — её приносит luna-cli вместе с настройками
-    # в /etc/skel, поэтому useradd -m сразу даёт готовое окружение.
+    # The user. The fish shell comes from luna-cli together with its settings
+    # in /etc/skel, so useradd -m yields a ready environment straight away.
     run arch-chroot /mnt useradd -m -G wheel -s /usr/bin/fish "${CFG[user]}"
     printf '%s:%s\n' "${CFG[user]}" "${CFG[password]}" | arch-chroot /mnt chpasswd \
         || { printf 'chpasswd\n' > "$FAILMARK"; exit 1; }
 
-    # Root заблокирован: вход только через sudo. Если sudo сломается,
-    # выручит загрузка с этого же образа, а постоянно открытый root —
-    # лишняя поверхность для ошибок.
+    # Root is locked: the way in is sudo only. If sudo ever breaks, booting
+    # from this same image is the way out, whereas a permanently open root is
+    # extra surface for mistakes.
     run arch-chroot /mnt passwd -l root
     runsh "echo '%wheel ALL=(ALL:ALL) ALL' > /mnt/etc/sudoers.d/10-wheel"
     run chmod 0440 /mnt/etc/sudoers.d/10-wheel
 
-    # Мелочи pacman, которые нельзя положить пакетом: /etc/pacman.conf
-    # принадлежит самому pacman и drop-in секций не поддерживает.
+    # The pacman details that cannot be shipped in a package: /etc/pacman.conf
+    # belongs to pacman itself and supports no drop-in sections.
     runsh "sed -i 's/^#Color\$/Color/;s/^#VerbosePkgLists\$/VerbosePkgLists/' /mnt/etc/pacman.conf"
     runsh "grep -q '^ParallelDownloads' /mnt/etc/pacman.conf || sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 5/' /mnt/etc/pacman.conf"
 
-    # Локальный репозиторий переезжает на установленную систему: иначе
-    # пакеты luna-* остались бы без источника обновлений. Временная мера,
-    # пока нет настоящего репозитория в сети.
+    # The local repository moves onto the installed system: otherwise the
+    # luna-* packages would be left without a source of updates. A temporary
+    # measure until there is a real repository on the network.
     if [[ -d $REPO_DIR ]]; then
         run mkdir -p /mnt"$REPO_DIR"
         runsh "cp -a '$REPO_DIR'/. /mnt'$REPO_DIR'/"
         runsh "printf '\n[luna]\nSigLevel = Required DatabaseOptional\nServer = file://%s\n' '$REPO_DIR' >> /mnt/etc/pacman.conf"
     fi
 
-    # Загрузка в снапшот без hook grub-btrfs-overlayfs даёт систему только
-    # для чтения: overlayfs делает её пригодной для починки. Ставится в
-    # конец HOOKS. Заставка plymouth, наоборот, должна идти сразу после
-    # udev — до того, как на экран польётся вывод ядра.
+    # Booting into a snapshot without the grub-btrfs-overlayfs hook gives a
+    # read-only system; overlayfs makes it usable for repairs. It goes at the
+    # end of HOOKS. The plymouth splash, by contrast, has to come right after
+    # udev, before kernel output starts pouring onto the screen.
     runsh "sed -i 's/^HOOKS=(base udev /HOOKS=(base udev plymouth /' /mnt/etc/mkinitcpio.conf"
     runsh "sed -i 's/^HOOKS=(\(.*\))\$/HOOKS=(\1 grub-btrfs-overlayfs)/' /mnt/etc/mkinitcpio.conf"
     run arch-chroot /mnt mkinitcpio -P
@@ -392,26 +394,26 @@ do_bootloader() {
         run arch-chroot /mnt grub-install --target=i386-pc --recheck "${CFG[disk]}"
     fi
 
-    # Вид меню загрузчика. /etc/default/grub принадлежит пакету grub и
-    # drop-in секций не поддерживает, поэтому правим его здесь, а не
-    # пакетом. Чёрный фон при заданной картинке GRUB считает прозрачным,
-    # поэтому текст ложится прямо на заставку.
+    # The look of the bootloader menu. /etc/default/grub belongs to the grub
+    # package and supports no drop-in sections, so it is edited here rather
+    # than shipped in a package. With a background set, GRUB treats black as
+    # transparent, so the text lands directly on the splash image.
     runsh "sed -i 's|^GRUB_DISTRIBUTOR=.*|GRUB_DISTRIBUTOR=\"Luna\"|' /mnt/etc/default/grub"
     runsh "sed -i 's|^#\?GRUB_GFXMODE=.*|GRUB_GFXMODE=auto|' /mnt/etc/default/grub"
     runsh "grep -q '^GRUB_BACKGROUND=' /mnt/etc/default/grub || printf '\nGRUB_BACKGROUND=\"/usr/share/luna/grub-background.png\"\nGRUB_COLOR_NORMAL=\"light-gray/black\"\nGRUB_COLOR_HIGHLIGHT=\"light-magenta/black\"\n' >> /mnt/etc/default/grub"
 
-    # splash включает заставку plymouth. Дописываем его перед закрывающей
-    # кавычкой, чтобы сохранить то, что там уже есть (у Arch по умолчанию
-    # loglevel=3 quiet — без них на заставку лез бы вывод ядра).
+    # splash turns the plymouth screen on. It is appended before the closing
+    # quote so that whatever is already there survives (Arch defaults to
+    # loglevel=3 quiet, without which kernel output would cover the splash).
     runsh "grep -q splash /mnt/etc/default/grub || sed -i '/^GRUB_CMDLINE_LINUX_DEFAULT=/ s/\"\$/ splash\"/' /mnt/etc/default/grub"
 
     run arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
 }
 
 do_snapper() {
-    # snapper при create-config создаёт собственный подтом /.snapshots, а у
-    # нас там уже смонтирован @snapshots. Поэтому: даём ему создать конфиг,
-    # убираем его подтом и возвращаем наш.
+    # On create-config snapper makes a /.snapshots subvolume of its own, and we
+    # already have @snapshots mounted there. So: let it create the config,
+    # remove its subvolume and put ours back.
     run umount /mnt/.snapshots
     run rmdir /mnt/.snapshots
     run arch-chroot /mnt snapper --no-dbus -c root create-config /
@@ -420,16 +422,17 @@ do_snapper() {
     run mount -o "noatime,compress=zstd:3,subvol=@snapshots" "${CFG[root]}" /mnt/.snapshots
     run arch-chroot /mnt chmod 750 /.snapshots
 
-    # Разумные пределы: иначе снапшоты незаметно съедают диск.
+    # Sensible limits: without them snapshots quietly eat the disk.
     runsh "arch-chroot /mnt sed -i 's/^TIMELINE_LIMIT_HOURLY=.*/TIMELINE_LIMIT_HOURLY=\"5\"/;s/^TIMELINE_LIMIT_DAILY=.*/TIMELINE_LIMIT_DAILY=\"7\"/;s/^TIMELINE_LIMIT_WEEKLY=.*/TIMELINE_LIMIT_WEEKLY=\"2\"/;s/^TIMELINE_LIMIT_MONTHLY=.*/TIMELINE_LIMIT_MONTHLY=\"0\"/;s/^TIMELINE_LIMIT_YEARLY=.*/TIMELINE_LIMIT_YEARLY=\"0\"/' /etc/snapper/configs/root"
 
-    # Пункты отката в меню GRUB появляются после этого.
+    # The rollback entries in the GRUB menu appear after this.
     run arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
 }
 
 do_services() {
-    # Набор сервисов задан пресетами из luna-base и luna-desktop,
-    # preset-all их и применяет — вместо россыпи systemctl enable.
+    # The set of services is defined by the presets from luna-base and
+    # luna-desktop, and preset-all is what applies them, instead of a scatter
+    # of systemctl enable calls.
     run arch-chroot /mnt systemctl preset-all
 }
 
@@ -456,7 +459,7 @@ install_all() {
 }
 
 #---------------------------------------------------------------------------
-# Главная последовательность
+# Main sequence
 #---------------------------------------------------------------------------
 
 main() {

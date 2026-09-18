@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Вырезает область из PNG и увеличивает её.
+"""Crops a region out of a PNG and enlarges it.
 
-Нужен, чтобы разглядывать мелочи интерфейса: выравнивание значков,
-толщину рамок, отступы. На скриншоте 1280x800 панель высотой 36 пикселей
-на глаз не оценить, а браузерный просмотрщик вырезать область не умеет.
+It exists for inspecting interface details: icon alignment, border widths,
+padding. On a 1280x800 screenshot a 36-pixel-tall panel cannot be judged by
+eye, and a browser image viewer cannot crop a region.
 
-    zoom-shot.py вход.png выход.png X Y Ш В [масштаб]
+    zoom-shot.py in.png out.png X Y W H [scale]
 
-Никаких зависимостей: PNG разбирается и собирается вручную через zlib.
+No dependencies: the PNG is parsed and rebuilt by hand through zlib.
 """
 import sys, zlib, struct
 
 
 def read_png(path):
     data = open(path, "rb").read()
-    assert data[:8] == b"\x89PNG\r\n\x1a\n", "это не PNG"
+    assert data[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG"
     pos, idat, hdr = 8, bytearray(), None
     while pos < len(data):
         (length,) = struct.unpack(">I", data[pos:pos + 4])
@@ -28,11 +28,11 @@ def read_png(path):
             break
         pos += 12 + length
     w, h, depth, color, _, _, interlace = hdr
-    assert depth == 8 and interlace == 0, "поддерживаются только 8 бит без чересстрочности"
+    assert depth == 8 and interlace == 0, "only 8-bit non-interlaced images are supported"
     nch = {0: 1, 2: 3, 4: 2, 6: 4}[color]
     raw = zlib.decompress(bytes(idat))
 
-    # Снимаем построчные фильтры PNG.
+    # Undo the per-scanline PNG filters.
     stride = w * nch
     out = bytearray(h * stride)
     prev = bytearray(stride)

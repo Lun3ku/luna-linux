@@ -1,9 +1,9 @@
-# Дефолтная конфигурация оболочки Luna Linux.
-# Живёт в /etc/skel, то есть достаётся каждому новому пользователю
-# и дальше правится им свободно — обновления пакета её не перезапишут.
+# The default shell configuration of Luna Linux.
+# It lives in /etc/skel, so every new user gets a copy and is then free to edit
+# it; a package update will not overwrite it.
 
 if status is-interactive
-    # Приветствие fish при каждом запуске никому не нужно.
+    # Nobody needs the fish greeting on every start.
     set -g fish_greeting
 
     set -gx EDITOR nvim
@@ -11,17 +11,18 @@ if status is-interactive
     set -gx PAGER less
     set -gx MANPAGER 'less -R'
 
-    # ls заменяем — синтаксис совместим, выигрыш очевиден.
-    # А вот grep, find, cat и du сознательно НЕ трогаем: у ripgrep, fd и
-    # dust другие аргументы, и подмена ломала бы привычные команды и скрипты,
-    # которые копируешь из интернета. Они доступны под своими именами.
+    # ls is replaced: the syntax is compatible and the gain is obvious.
+    # grep, find, cat and du are deliberately left alone: ripgrep, fd and dust
+    # take different arguments, and shadowing the originals would break
+    # familiar commands and the scripts one copies off the internet. They are
+    # all available under their own names.
     alias ls  'eza --group-directories-first --icons=auto'
     alias ll  'eza -l  --group-directories-first --icons=auto --git'
     alias la  'eza -la --group-directories-first --icons=auto --git'
     alias lt  'eza --tree --level=2 --icons=auto'
 
-    # Сокращения раскрываются в полную команду при нажатии пробела,
-    # поэтому видно, что именно выполнится.
+    # Abbreviations expand into the full command when space is pressed, so it
+    # is visible what is about to run.
     abbr -a gs  'git status --short --branch'
     abbr -a gd  'git diff'
     abbr -a ga  'git add'
@@ -33,13 +34,13 @@ if status is-interactive
     abbr -a pQs 'pacman -Qs'
     abbr -a pRns 'sudo pacman -Rns'
 
-    # Приглашение.
+    # The prompt.
     starship init fish | source
 
-    # cd запоминает, куда ты ходишь: «cd luna» находит каталог из любого места.
-    # Обычное поведение cd с путями при этом сохраняется.
+    # cd remembers where you go: "cd luna" finds the directory from anywhere.
+    # The ordinary behaviour of cd with a path is preserved.
     zoxide init fish --cmd cd | source
 
-    # Ctrl+R по истории, Ctrl+T по файлам, Alt+C по каталогам.
+    # Ctrl+R through history, Ctrl+T through files, Alt+C through directories.
     fzf --fish | source
 end

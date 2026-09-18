@@ -2,14 +2,15 @@
 pkgname=luna-keyring
 pkgver=0.1.0
 pkgrel=1
-pkgdesc="Ключ, которым подписаны пакеты Luna Linux"
+pkgdesc="The key the Luna Linux packages are signed with"
 arch=('any')
 url="https://github.com/luna-linux"
 license=('GPL-3.0-or-later')
 
-# Зависимость от pacman не формальность, а порядок установки. Скриптлет
-# ниже зовёт pacman-key; если бы пакет ни от чего не зависел, pacman мог бы
-# поставить его раньше самого себя, и скриптлет тихо ничего бы не сделал.
+# Depending on pacman is not a formality but an ordering constraint. The
+# scriptlet below calls pacman-key; if the package depended on nothing, pacman
+# could install it before pacman itself, and the scriptlet would quietly do
+# nothing.
 depends=('pacman')
 
 install="$pkgname.install"

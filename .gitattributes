@@ -1,10 +1,10 @@
-# Luna собирается на Linux, поэтому переводы строк только LF — независимо
-# от того, на какой системе клонировали репозиторий. Скрипт с CRLF в
-# шебанге на Linux не запускается вовсе: ядро ищет интерпретатор с именем
-# "/usr/bin/env bash\r" и не находит.
+# Luna is built on Linux, so line endings are LF only, no matter which system
+# the repository was cloned on. A script with CRLF in its shebang does not run
+# on Linux at all: the kernel looks for an interpreter literally named
+# "/usr/bin/env bash\r" and fails to find it.
 * text=auto eol=lf
 
-# Двоичные файлы конвертировать нельзя.
+# Binary files must not be converted.
 *.png  binary
 *.gpg  binary
 *.ttf  binary

@@ -1,20 +1,21 @@
-# Дефолты Luna Linux. Обрабатывается раньше 99-default.preset, где стоит
-# «disable *», а побеждает первое совпавшее правило — поэтому эти enable
-# работают. Применяется командой systemctl preset-all (её вызывает установщик).
+# Luna Linux defaults. Processed before 99-default.preset, which says
+# "disable *", and the first matching rule wins, which is why these enables
+# take effect. Applied by systemctl preset-all (the installer calls it).
 
-# Без oomd нехватка памяти вешает машину наглухо вместо того, чтобы убить
-# один процесс. Это одна из самых заметных QoL-вещей вообще.
+# Without oomd, running out of memory freezes the machine solid instead of
+# killing a single process. That is one of the most noticeable quality-of-life
+# improvements there is.
 enable systemd-oomd.service
 
 enable NetworkManager.service
 enable systemd-timesyncd.service
 enable fstrim.timer
 
-# Обслуживание: чистка кэша пакетов, свежие зеркала.
+# Maintenance: package cache cleanup, fresh mirrors.
 enable paccache.timer
 enable reflector.timer
 
-# Снапшоты и пункты отката в меню GRUB.
+# Snapshots and rollback entries in the GRUB menu.
 enable snapper-timeline.timer
 enable snapper-cleanup.timer
 enable grub-btrfsd.service

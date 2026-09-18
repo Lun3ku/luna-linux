@@ -1,26 +1,27 @@
 #!/usr/bin/env bash
-# Запуск рабочего стола Luna.
+# Starts the Luna desktop.
 #
-# Нужен потому, что Hyprland регистрирует ДВА сеанса, и выбор между ними
-# не косметический:
+# It exists because Hyprland registers TWO sessions, and the choice between
+# them is not cosmetic:
 #
 #   hyprland.desktop        -> /usr/bin/start-hyprland
 #   hyprland-uwsm.desktop   -> uwsm start -e -D Hyprland hyprland.desktop
 #
-# Первый не создаёт systemd-сессию: graphical-session.target остаётся
-# неактивным, XDG_CURRENT_DESKTOP пустым, а панель, обои, уведомления и
-# агент прав — мёртвыми, потому что все они привязаны к этому target.
-# Проверено на установленной системе: is-active показывал inactive у всех.
+# The first one creates no systemd session: graphical-session.target stays
+# inactive, XDG_CURRENT_DESKTOP stays empty, and the panel, the wallpaper, the
+# notifications and the polkit agent stay dead, because all of them are bound
+# to that target. Verified on an installed system: is-active reported inactive
+# for every one of them.
 #
-# Экран входа указывает на этот скрипт, чтобы по умолчанию всегда
-# запускался правильный вариант, а не тот, который окажется первым в
-# списке сеансов.
+# The login screen points at this script so that the correct variant always
+# starts by default, rather than whichever happens to come first in the list of
+# sessions.
 set -euo pipefail
 
 if command -v uwsm >/dev/null 2>&1; then
     exec uwsm start -e -D Hyprland hyprland.desktop
 fi
 
-# Запасной путь: без uwsm поднимаем сеанс сами, иначе рабочий стол
-# останется пустым экраном.
+# The fallback: without uwsm, bring the session up ourselves, otherwise the
+# desktop would be nothing but an empty screen.
 exec Hyprland

@@ -1,75 +1,80 @@
-# luna-desktop — Hyprland и всё, без чего он не рабочий стол, а голый WM.
-luna-release                  # брендинг; base-devel сюда не тянем
+# luna-desktop is Hyprland and everything without which it is a bare window
+# manager rather than a desktop.
+luna-release                  # branding; base-devel is not dragged in here
 
-# --- композитор и сеанс ---
+# --- compositor and session ---
 hyprland
-uwsm                          # запускает Hyprland как настоящий systemd-сеанс:
-                              # доводит дело до graphical-session.target, после
-                              # чего юниты ниже стартуют и перезапускаются сами
-xdg-desktop-portal-hyprland   # скриншеринг, файловые диалоги
-hyprpolkitagent               # запросы прав в графике
+uwsm                          # starts Hyprland as a real systemd session:
+                              # it carries things through to
+                              # graphical-session.target, after which the units
+                              # below start and restart on their own
+xdg-desktop-portal-hyprland   # screen sharing, file dialogs
+hyprpolkitagent               # graphical privilege prompts
 hyprcursor
 
-# --- оболочка рабочего стола ---
-waybar                        # панель
-rofi-wayland                  # запуск программ, переключение окон, меню
-mako                          # уведомления
-swaybg                        # обои. Рисует через cairo и wl_shm, то есть
-                              # работает и без GPU. hyprpaper 0.8.4 в тех же
-                              # условиях падает с SIGSEGV — проверено
-hyprpaper                     # оставлен как альтернатива для тех, у кого
-                              # есть GPU и нужен IPC-контроль обоев
-hyprlock                      # блокировка экрана
-hypridle                      # автоблокировка и гашение экрана по простою
-hyprshutdown                  # меню выключения
-hyprsunset                    # ночной режим, тёплые цвета вечером
-hyprpicker                    # пипетка цвета
+# --- desktop shell ---
+waybar                        # the panel
+rofi-wayland                  # launching programs, switching windows, menus
+mako                          # notifications
+swaybg                        # the wallpaper. It draws through cairo and
+                              # wl_shm, so it works without a GPU too.
+                              # hyprpaper 0.8.4 crashes with SIGSEGV under the
+                              # same conditions - verified
+hyprpaper                     # kept as an alternative for those who have a GPU
+                              # and want IPC control over the wallpaper
+hyprlock                      # screen lock
+hypridle                      # automatic lock and screen blanking when idle
+hyprshutdown                  # the shutdown menu
+hyprsunset                    # night mode, warmer colours in the evening
+hyprpicker                    # colour picker
 
-# --- буфер обмена и скриншоты ---
+# --- clipboard and screenshots ---
 wl-clipboard
-cliphist                      # история буфера обмена
-grim                          # снимок экрана
-slurp                         # выбор области
-swappy                        # разметка снимка
+cliphist                      # clipboard history
+grim                          # screen capture
+slurp                         # region selection
+swappy                        # annotating a capture
 
-# --- вход в систему ---
+# --- logging in ---
 greetd
-greetd-tuigreet               # экран входа в одной эстетике с установщиком
+greetd-tuigreet               # a login screen in the same style as the installer
 
-# --- приложения ---
-kitty                         # терминал
-thunar                        # файловый менеджер
-thunar-volman                 # автомонтирование съёмных носителей
-tumbler                       # миниатюры файлов
-gvfs                          # доступ к дискам и сети из файлового менеджера
+# --- applications ---
+kitty                         # terminal
+thunar                        # file manager
+thunar-volman                 # automatic mounting of removable media
+tumbler                       # file thumbnails
+gvfs                          # access to disks and network from the file manager
 xdg-user-dirs
 polkit
 
-# --- звук ---
+# --- sound ---
 pipewire
-pipewire-pulse                # даёт интерфейс PulseAudio; сам pulseaudio
-                              # с ним конфликтует и ломает захват экрана
+pipewire-pulse                # provides the PulseAudio interface; pulseaudio
+                              # itself conflicts with it and breaks screen
+                              # capture
 pipewire-alsa
 wireplumber
 pavucontrol
 
-# --- сеть и bluetooth ---
+# --- network and bluetooth ---
 network-manager-applet
 bluez
 bluez-utils
 blueman
 
-# --- мелочи оборудования ---
-brightnessctl                 # яркость экрана
-playerctl                     # управление воспроизведением с клавиатуры
+# --- hardware odds and ends ---
+brightnessctl                 # screen brightness
+playerctl                     # media control from the keyboard
 
-# --- вид ---
-# Шрифт разделён намеренно. Пакет ttf-jetbrains-mono-nerd весит 232 МиБ:
-# в нём 96 файлов — все начертания всех вариантов. Обычный шрифт плюс
-# символьный дают ровно тот же результат за 10 МиБ: fontconfig сам берёт
-# иконки из Symbols Nerd Font Mono. Проверено на всех используемых глифах.
-ttf-jetbrains-mono            # основной моноширинный
-ttf-nerd-fonts-symbols-mono   # иконки для панели, подставляются автоматически
+# --- appearance ---
+# The font is split deliberately. The ttf-jetbrains-mono-nerd package weighs
+# 232 MiB: 96 files, every weight of every variant. An ordinary font plus a
+# symbol font give exactly the same result for 10 MiB, because fontconfig picks
+# the icons out of Symbols Nerd Font Mono by itself. Verified on every glyph
+# in use.
+ttf-jetbrains-mono            # the main monospace face
+ttf-nerd-fonts-symbols-mono   # panel icons, substituted automatically
 noto-fonts
 noto-fonts-emoji
 noto-fonts-cjk

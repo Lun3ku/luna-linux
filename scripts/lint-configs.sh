@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Проверка синтаксиса всех конфигов Luna. Запускать перед сборкой:
-# битый конфиг оборачивается не ошибкой сборки, а неработающим
-# рабочим столом у пользователя, и ловить это в собранном образе долго.
+# Syntax check for every Luna config. Run it before a build: a broken config
+# does not surface as a build error but as a broken desktop on the user's
+# machine, and hunting that down inside a finished image takes a long time.
 set -uo pipefail
 
 LUNA_SRC=${LUNA_SRC:-/mnt/c/Users/anyah/Documents/Claudes work/luna}
@@ -10,10 +10,10 @@ C="$LUNA_SRC/pkg/luna-cli"
 I="$LUNA_SRC/iso"
 fail=0
 
-check() { # имя команда...
+check() { # name command...
   printf '  %-16s ' "$1"; shift
   if out=$("$@" 2>&1); then printf '\033[1;32mOK\033[0m\n'
-  else printf '\033[1;31mОШИБКА\033[0m\n%s\n' "$out"; fail=$((fail+1)); fi
+  else printf '\033[1;31mFAILED\033[0m\n%s\n' "$out"; fail=$((fail+1)); fi
 }
 
 lua_ok() { lua -e "local f,e=loadfile([[$1]]); if not f then io.stderr:write(tostring(e)) os.exit(1) end"; }
@@ -22,19 +22,19 @@ import json,re,sys
 s=open(sys.argv[1],encoding='utf-8').read()
 json.loads(re.sub(r'^\s*//.*\$','',s,flags=re.M))" "$1"; }
 toml_ok() { python3 -c "import tomllib,sys; tomllib.load(open(sys.argv[1],'rb'))" "$1"; }
-# Глифы иконок обязаны быть escape-последовательностями, а не живыми
-# символами: приватная область Unicode теряется при передаче файлов.
+# Icon glyphs have to be escape sequences rather than literal characters: the
+# Unicode private use area gets lost when files are passed around.
 glyphs_ascii() { python3 -c "
 import sys
 s=open(sys.argv[1],encoding='utf-8').read()
 bad=[c for c in s if 0xE000 <= ord(c) <= 0xF8FF]
 if bad:
-    sys.stderr.write('в файле %d живых глифов приватной области; нужны escape-последовательности' % len(bad))
+    sys.stderr.write('%d literal private-use glyphs in the file; escape sequences are required' % len(bad))
     sys.exit(1)" "$1"; }
 
-# Подпись пакетов легко выключить случайно: достаточно вернуть TrustAll в
-# одном месте, и проверка молча перестанет что-либо значить. Ищем во всех
-# файлах, где задаётся SigLevel для репозитория luna.
+# Package signing is easy to switch off by accident: putting TrustAll back in
+# one place is enough for verification to quietly stop meaning anything. Look
+# in every file that sets SigLevel for the luna repository.
 no_trustall() { python3 -c "
 import sys
 bad=[]
@@ -45,11 +45,11 @@ for path in sys.argv[1:]:
         if 'SigLevel' in t and 'TrustAll' in t:
             bad.append('%s:%d: %s' % (path,n,t))
 if bad:
-    sys.stderr.write('проверка подписи выключена: ' + '; '.join(bad))
+    sys.stderr.write('signature verification is disabled: ' + '; '.join(bad))
     sys.exit(1)" "$@"; }
-# Отпечаток в luna-trusted должен совпадать с ключом в luna.gpg: иначе
-# pacman-key импортирует ключ, но доверия ему не выставит, и подписанные
-# пакеты будут отвергнуты как чужие.
+# The fingerprint in luna-trusted has to match the key in luna.gpg: otherwise
+# pacman-key imports the key but never marks it trusted, and signed packages
+# get rejected as somebody else's.
 keyring_match() { python3 -c "
 import subprocess,sys
 d=sys.argv[1]
@@ -58,23 +58,23 @@ out=subprocess.run(['gpg','--with-colons','--show-keys',d+'/luna.gpg'],
                    capture_output=True,text=True).stdout
 got=[l.split(':')[9] for l in out.splitlines() if l.startswith('fpr:')]
 if want not in got:
-    sys.stderr.write('в luna-trusted %s, а в luna.gpg %s' % (want, got))
+    sys.stderr.write('luna-trusted says %s, luna.gpg says %s' % (want, got))
     sys.exit(1)" "$1"; }
 
-printf '\033[1;36m==>\033[0m Проверяю конфиги\n'
+printf '\033[1;36m==>\033[0m Checking the configs\n'
 check "hyprland.lua"   lua_ok       "$D/hyprland.lua"
 check "config.fish"    fish -n      "$C/config.fish"
 check "waybar json"    json_ok      "$D/waybar-config.jsonc"
-check "waybar глифы"   glyphs_ascii "$D/waybar-config.jsonc"
+check "waybar glyphs"  glyphs_ascii "$D/waybar-config.jsonc"
 check "greetd toml"    toml_ok      "$D/greetd-luna.toml"
 check "greetd live"    toml_ok      "$I/airootfs/etc/greetd/luna.toml"
 check "sudoers live"   visudo -cqf  "$I/airootfs/etc/sudoers.d/10-luna-live"
 check "live-user.sh"   bash -n      "$I/airootfs/usr/local/bin/luna-live-user"
 check "profiledef.sh"  bash -n      "$I/profiledef.sh"
-check "подпись репо"  no_trustall   "$I/pacman.conf" "$LUNA_SRC/pkg/luna-installer/luna-install"
-check "связка ключей" keyring_match "$LUNA_SRC/pkg/luna-keyring"
+check "repo signing"   no_trustall   "$I/pacman.conf" "$LUNA_SRC/pkg/luna-installer/luna-install"
+check "keyring match"  keyring_match "$LUNA_SRC/pkg/luna-keyring"
 
 if (( fail )); then
-  printf '\033[1;31m!!!\033[0m Проблем: %d\n' "$fail"; exit 1
+  printf '\033[1;31m!!!\033[0m Problems: %d\n' "$fail"; exit 1
 fi
-printf '\033[1;32m==>\033[0m Все конфиги валидны\n'
+printf '\033[1;32m==>\033[0m Every config is valid\n'

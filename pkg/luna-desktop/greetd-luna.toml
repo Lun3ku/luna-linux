@@ -1,21 +1,21 @@
-# Экран входа Luna Linux.
+# The Luna Linux login screen.
 #
-# Файл лежит отдельно от /etc/greetd/config.toml, который принадлежит пакету
-# greetd. Systemd-drop-in подсовывает greetd именно этот путь — так мы не
-# переписываем чужой конфиг и не ловим .pacnew при обновлениях.
+# This file is kept apart from /etc/greetd/config.toml, which belongs to the
+# greetd package. A systemd drop-in hands greetd this path instead, so we
+# neither overwrite somebody else's config nor collect .pacnew files on update.
 
 [terminal]
 vt = 1
 
 [default_session]
-# tuigreet выбран под стать установщику: тот же текстовый интерфейс.
+# tuigreet was chosen to match the installer: the same text interface.
 #
-# --cmd обязателен. Без него tuigreet берёт первый сеанс из списка, а это
-# обычный hyprland.desktop, который не создаёт systemd-сессию: панель,
-# обои и уведомления остаются мёртвыми. luna-session всегда запускает
-# вариант под uwsm. Выбрать другой сеанс по-прежнему можно клавишей F3.
+# --cmd is mandatory. Without it tuigreet takes the first session in the list,
+# which is the plain hyprland.desktop that creates no systemd session, leaving
+# the panel, the wallpaper and the notifications dead. luna-session always
+# starts the uwsm variant. Choosing another session is still possible with F3.
 #
-# --remember и --remember-session возвращают последнего пользователя и
-# последний сеанс, чтобы вход был в одно нажатие.
+# --remember and --remember-session bring back the last user and the last
+# session, so logging in takes one keypress.
 command = "tuigreet --remember --remember-session --asterisks --time --sessions /usr/share/wayland-sessions --cmd /usr/bin/luna-session --greeting Luna"
 user = "greeter"

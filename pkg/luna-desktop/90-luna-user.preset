@@ -1,22 +1,23 @@
-# Дефолтные сервисы пользовательского сеанса Luna Linux.
+# The default services of a Luna Linux user session.
 #
-# Работает благодаря uwsm: он поднимает сеанс так, что systemd доходит до
-# graphical-session.target, к которому привязаны юниты ниже. Поэтому панель
-# и уведомления не запускаются из конфига Hyprland — их ведёт systemd и
-# перезапускает при падении.
+# They work thanks to uwsm: it brings the session up in a way that lets systemd
+# reach graphical-session.target, which the units below are bound to. That is
+# why the panel and the notifications are not launched from the Hyprland
+# config - systemd runs them and restarts them if they die.
 #
-# Пресет применяется командой systemctl --user preset-all. На случай, если
-# её никто не выполнял, пакет дополнительно кладёт симлинки в
-# /usr/lib/systemd/user/graphical-session.target.wants — тогда набор
-# работает сразу и у любого пользователя.
+# The preset is applied by systemctl --user preset-all. In case nobody ever ran
+# that, the package also ships symlinks in
+# /usr/lib/systemd/user/graphical-session.target.wants, which makes the set
+# work immediately and for any user.
 enable waybar.service
 enable mako.service
-# Обои ставит swaybg через luna-wallpaper, а не hyprpaper:
-# тот падает без работающего EGL, то есть в любой виртуалке.
+# The wallpaper is set by swaybg through luna-wallpaper rather than hyprpaper:
+# that one crashes without working EGL, which means in any virtual machine.
 enable luna-wallpaper.service
 enable hypridle.service
 enable hyprpolkitagent.service
 enable cliphist.service
-# blueman-applet намеренно не включён: без bluetooth-адаптера юнит просто
-# падает и портит счётчик упавших сервисов на панели. Кому нужен апплет —
+# blueman-applet is deliberately left out: without a bluetooth adapter the unit
+# simply fails and spoils the failed-service count on the panel. Anyone who
+# wants the applet can run
 # systemctl --user enable --now blueman-applet.service

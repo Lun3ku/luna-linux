@@ -1,4 +1,4 @@
-# Уведомления Luna Linux. Палитра совпадает с панелью и Hyprland.
+# Luna Linux notifications. The palette matches the panel and Hyprland.
 font=JetBrains Mono 11
 background-color=#1b1926f2
 text-color=#e8e4f4
@@ -23,5 +23,5 @@ default-timeout=4000
 [urgency=high]
 border-color=#ff92a8
 text-color=#ff92a8
-# Важное не должно исчезать само.
+# Important things must not disappear on their own.
 default-timeout=0

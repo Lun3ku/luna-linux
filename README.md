@@ -1,169 +1,178 @@
 # Luna Linux
 
-Дистрибутив на базе Arch: самое свежее стабильное ядро, Hyprland из коробки,
-только QoL-функции. Пакетный менеджер — pacman.
+An Arch-based distribution: the latest stable kernel, Hyprland out of the box,
+quality-of-life features only. Package manager: pacman.
 
 `NAME="Luna Linux"`, `ID=luna`.
 
-## Окружение сборки
+## Build environment
 
-Сборка идёт не в Windows, а в отдельном WSL-дистрибутиве Arch — `LunaBuild`,
-лежит на диске **E:** (`E:\WSL\LunaBuild`), потому что на C: не хватает места,
-а сборке нужно 15–25 ГБ. Существующий `PistachioLinux` не затрагивается.
+Luna is not built on Windows but inside a separate Arch WSL distribution named
+`LunaBuild`, which lives on drive **E:** (`E:\WSL\LunaBuild`) because C: does not
+have enough free space and a build needs 15-25 GB. The existing
+`PistachioLinux` distribution is left alone.
 
-Исходники живут здесь, на диске Windows, — это текст, единицы мегабайт.
-Тяжёлая работа идёт на ext4 внутри `LunaBuild` в `/var/luna`.
+The sources live here, on the Windows drive, because they are text and weigh a
+few megabytes. The heavy work happens on ext4 inside `LunaBuild`, in `/var/luna`.
 
-| Что | Где |
+| What | Where |
 |---|---|
-| Исходники | `C:\Users\anyah\Documents\Claudes work\luna` |
-| Они же из WSL | `/mnt/c/Users/anyah/Documents/Claudes work/luna` |
-| Копия профиля на ext4 | `/var/luna/src` |
-| Рабочий каталог mkarchiso | `/var/luna/work` |
-| Готовые ISO | `/var/luna/out` |
+| Sources | `C:\Users\anyah\Documents\Claudes work\luna` |
+| The same, seen from WSL | `/mnt/c/Users/anyah/Documents/Claudes work/luna` |
+| Copy of the profile on ext4 | `/var/luna/src` |
+| mkarchiso work directory | `/var/luna/work` |
+| Finished ISO images | `/var/luna/out` |
 
-Создание хоста с нуля (из PowerShell):
+Creating the build host from scratch (from PowerShell):
 
 ```powershell
 wsl --install archlinux --name LunaBuild --location E:\WSL\LunaBuild --vhd-size 50GB --no-launch
 wsl -d LunaBuild -u root -- bash '/mnt/c/Users/anyah/Documents/Claudes work/luna/scripts/bootstrap-host.sh'
 ```
 
-## Рабочий цикл
+## Workflow
 
-Все скрипты запускаются внутри `LunaBuild` от root:
+Every script runs inside `LunaBuild` as root:
 
 ```powershell
-wsl -d LunaBuild -u root -- bash '/mnt/c/Users/anyah/Documents/Claudes work/luna/scripts/<скрипт>'
+wsl -d LunaBuild -u root -- bash '/mnt/c/Users/anyah/Documents/Claudes work/luna/scripts/<script>'
 ```
 
-| Скрипт | Что делает |
+| Script | What it does |
 |---|---|
-| `bootstrap-host.sh` | Разовая подготовка сборочного хоста. Идемпотентен. |
-| `check-packages.sh` | Проверяет, что имена пакетов существуют в репозиториях. Arch — rolling, пакеты переименовывают. |
-| `make-branding.sh` | Рендерит PNG брендинга из SVG-исходников в `branding/`. |
-| `lint-configs.sh` | Проверяет синтаксис всех конфигов Luna. Битый конфиг оборачивается не ошибкой сборки, а неработающим рабочим столом. |
-| `build-pkgs.sh` | Собирает пакеты `luna-*` и обновляет локальный репозиторий. |
-| `build-iso.sh` | Синхронизирует профиль на ext4 и запускает `mkarchiso`. |
-| `test-iso.sh` | Поднимает собранный образ в QEMU. |
-| `test-install-auto.sh` | Автоматически проходит установщик с ответами по умолчанию. Регрессионный тест. |
-| `vm-screenshot.sh` | Снимок экрана виртуалки через QMP. |
-| `zoom-shot.py` | Вырезает область снимка и увеличивает — разглядывать панель в 36 пикселей иначе невозможно. |
-| `vm-type.sh` | Ввод с клавиатуры в виртуалку через QMP, включая сочетания клавиш. |
-| `vm-view.sh` | Веб-клиент noVNC для просмотра виртуалки в браузере. |
+| `bootstrap-host.sh` | One-time preparation of the build host. Idempotent. |
+| `check-packages.sh` | Checks that the package names still exist in the repositories. Arch is rolling; packages get renamed. |
+| `make-branding.sh` | Renders the branding PNGs from the SVG sources in `branding/`. |
+| `lint-configs.sh` | Checks the syntax of every Luna config. A broken config does not show up as a build error but as a broken desktop. |
+| `build-pkgs.sh` | Builds the `luna-*` packages and updates the local repository. |
+| `build-iso.sh` | Syncs the profile to ext4 and runs `mkarchiso`. |
+| `test-iso.sh` | Boots the built image in QEMU. |
+| `test-install-auto.sh` | Walks through the installer automatically with default answers. A regression test. |
+| `vm-screenshot.sh` | Takes a screenshot of the VM over QMP. |
+| `zoom-shot.py` | Crops a region of a screenshot and enlarges it; a 36-pixel-tall panel cannot be inspected any other way. |
+| `vm-type.sh` | Sends keyboard input to the VM over QMP, including key combinations. |
+| `vm-view.sh` | A noVNC web client for watching the VM in a browser. |
 
-Для отладки сборку можно сильно ускорить, пожертвовав размером образа:
+While debugging, the build can be made much faster at the cost of image size:
 
 ```bash
 LUNA_COMP_LEVEL=3 ./scripts/build-iso.sh
 ```
 
-## Как смотреть на виртуалку
+For a release build, size wins over build time:
 
-Окно WSLg всплывает не на всех машинах, поэтому основной способ — браузер.
-В двух разных долгоживущих процессах:
+```bash
+LUNA_COMP=xz ./scripts/build-iso.sh
+```
+
+## How to look at the VM
+
+The WSLg window does not appear on every machine, so the primary way is a
+browser. Run these in two separate long-lived processes:
 
 ```powershell
 wsl -d LunaBuild -u root -- bash '/mnt/c/Users/anyah/Documents/Claudes work/luna/scripts/vm-view.sh'
 wsl -d LunaBuild -u root -- bash '/mnt/c/Users/anyah/Documents/Claudes work/luna/scripts/test-iso.sh' --vnc
 ```
 
-Затем открыть:
+Then open:
 
 ```
 http://localhost:8080/novnc/vnc.html?host=localhost&port=5700&path=&autoconnect=true&resize=scale&reconnect=true
 ```
 
-`path=` обязателен и должен быть пустым: noVNC по умолчанию подключается к
-`/websockify`, а встроенный websocket QEMU отдаёт VNC только по корню `/`
-и на любой другой путь отвечает 404.
+`path=` is mandatory and must be empty: noVNC connects to `/websockify` by
+default, while the websocket built into QEMU serves VNC only at the root `/`
+and answers 404 on any other path.
 
-Не требующий браузера способ — снять кадр прямо из работающей VM:
+A way that needs no browser is grabbing a frame straight out of the running VM:
 
 ```bash
-./scripts/vm-screenshot.sh /путь/куда/положить.png
+./scripts/vm-screenshot.sh /where/to/put/it.png
 ```
 
-## Структура
+## Layout
 
 ```
-branding/ SVG-исходники заставок и логотипа
-iso/     профиль archiso (основан на releng)
-pkg/     свои пакеты: luna-base, luna-cli, luna-desktop, luna-installer, luna-keyring
-repo/    собранный локальный репозиторий pacman
-scripts/ сборка и запуск
-docs/    заметки по решениям
+branding/ SVG sources for the splash screens and the logo
+iso/      archiso profile (based on releng)
+pkg/      our own packages: luna-base, luna-cli, luna-desktop, luna-installer, luna-keyring
+repo/     the built local pacman repository
+scripts/  building and running
+docs/     notes on the decisions taken
 ```
 
-## Пакеты Luna
+## The Luna packages
 
-| Пакет | Что внутри | Где нужен |
+| Package | What is inside | Where it is needed |
 |---|---|---|
-| `luna-release` | Только `os-release` и идентификация системы. Ни от чего не зависит. | Образ и установленная система |
-| `luna-base` | База (`base`, `base-devel`) и надёжность: btrfs + snapper + snap-pac, GRUB + grub-btrfs, zram, systemd-oomd, автоочистка кэша, зеркала. | Только установленная система |
-| `luna-cli` | `fish` + `starship` и современный набор утилит с готовыми настройками в `/etc/skel`. | Образ и установленная система |
-| `luna-desktop` | Hyprland, waybar, rofi, mako, экран входа, тема, обои. Конфиги в `/etc/skel`. | Образ и установленная система |
-| `luna-keyring` | Публичный ключ, которым подписаны пакеты `luna-*`. | Образ и установленная система |
+| `luna-release` | Nothing but `os-release` and the system identity. Depends on nothing. | Image and installed system |
+| `luna-base` | The base (`base`, `base-devel`) and the reliability layer: btrfs + snapper + snap-pac, GRUB + grub-btrfs, zram, systemd-oomd, automatic cache cleanup, mirror refresh. | Installed system only |
+| `luna-cli` | `fish` + `starship` and a modern set of tools with ready-made settings in `/etc/skel`. | Image and installed system |
+| `luna-desktop` | Hyprland, waybar, rofi, mako, the login screen, the theme, the wallpaper. Configs in `/etc/skel`. | Image and installed system |
+| `luna-keyring` | The public key the `luna-*` packages are signed with. | Image and installed system |
 
-`luna-base` сознательно **не** попадает на загрузочный образ: он тянет
-`base-devel` (+307 МБ), а компилятор на live-флешке не нужен. Ради этого
-брендинг и вынесен в отдельный крошечный `luna-release`.
+`luna-base` deliberately does **not** go onto the boot image: it pulls in
+`base-devel` (+307 MB), and a compiler is of no use on a live USB stick. That
+is exactly why the branding was split out into the tiny `luna-release`.
 
-Ядро в зависимостях не указано: пользователь выбирает `linux` или
-`linux-zen` в установщике, а `-headers` обязаны соответствовать выбранному
-ядру. Пару «ядро + headers» ставит установщик.
+The kernel is not listed as a dependency: the user picks `linux` or `linux-zen`
+in the installer, and `-headers` must match the chosen kernel. The installer
+installs the kernel and its headers as a pair.
 
-## Подпись пакетов
+## Package signing
 
-Пакеты `luna-*` подписаны, и репозиторий `[luna]` объявлен с
-`SigLevel = Required DatabaseOptional` — как официальные репозитории Arch.
-Неподписанный или подписанный чужим ключом пакет установлен не будет.
+The `luna-*` packages are signed, and the `[luna]` repository is declared with
+`SigLevel = Required DatabaseOptional`, the same as the official Arch
+repositories. A package that is unsigned, or signed with somebody else's key,
+will not be installed.
 
-Цепочка доверия устроена так:
+The chain of trust works like this:
 
-1. `scripts/build-pkgs.sh` подписывает каждый пакет, а `repo-add
-   --include-sigs` кладёт подпись внутрь базы репозитория.
-2. Пакет `luna-keyring` несёт публичный ключ в
-   `/usr/share/pacman/keyrings/` и попадает на образ.
-3. На живом образе `pacman-init.service` при каждой загрузке наполняет
-   связку ключей всем, что лежит в этом каталоге, — включая наш ключ.
-4. Установщик ставит `luna-keyring` на целевой диск, поэтому после
-   перезагрузки система проверяет подписи своих обновлений сама.
+1. `scripts/build-pkgs.sh` signs every package, and `repo-add --include-sigs`
+   puts the signature inside the repository database.
+2. The `luna-keyring` package carries the public key in
+   `/usr/share/pacman/keyrings/` and ships on the image.
+3. On the live image `pacman-init.service` fills the keyring on every boot with
+   everything found in that directory, our key included.
+4. The installer puts `luna-keyring` on the target disk, so after a reboot the
+   system verifies the signatures of its own updates by itself.
 
-Секретная часть ключа живёт **только** в `~builder/.gnupg` на сборочной
-машине и в репозиторий не попадает. Резервная копия и порядок
-восстановления — `E:\Luna-Linux-Keys\README.txt`.
+The secret half of the key lives **only** in `~builder/.gnupg` on the build
+machine and never enters the repository. The backup copy and the recovery
+procedure are in `E:\Luna-Linux-Keys\README.txt`.
 
-Создать ключ заново (нужно один раз или после потери):
+Creating the key from scratch (needed once, or after losing it):
 
 ```bash
 ./scripts/make-signing-key.sh
 ```
 
-## Как добавить пакет
+## How to add a package
 
-Смысл определяет место:
+The purpose decides the place:
 
-- **на загрузочный образ** (инструменты установки, live-окружение) —
-  в [iso/packages.x86_64](iso/packages.x86_64);
-- **на установленную машину** — в `pkg/luna-*/depends.txt`, тогда пакет
-  приедет с нашим метапакетом и будет обновляться обычным `pacman -Syu`.
+- **onto the boot image** (installation tools, the live environment) goes into
+  [iso/packages.x86_64](iso/packages.x86_64);
+- **onto the installed machine** goes into `pkg/luna-*/depends.txt`, so that the
+  package arrives together with our metapackage and is then updated by an
+  ordinary `pacman -Syu`.
 
-Дальше:
+After that:
 
 ```bash
-./scripts/check-packages.sh pkg/luna-desktop/depends.txt   # имена существуют?
-./scripts/build-pkgs.sh luna-desktop                      # пересобрать пакет
-./scripts/build-iso.sh                                    # пересобрать образ
+./scripts/check-packages.sh pkg/luna-desktop/depends.txt   # do the names exist?
+./scripts/build-pkgs.sh luna-desktop                      # rebuild the package
+./scripts/build-iso.sh                                    # rebuild the image
 ```
 
-Проверка имён обязательна: Arch — rolling, пакеты переименовывают и
-выкидывают, и узнавать об этом в середине сборки образа неприятно.
+Checking the names is not optional: Arch is rolling, packages get renamed and
+dropped, and finding that out halfway through an image build is unpleasant.
 
-Подробности принятых решений и неочевидных фактов — в
-[docs/decisions.md](docs/decisions.md).
+The reasoning behind the decisions, and the non-obvious facts behind them, are
+in [docs/decisions.md](docs/decisions.md).
 
-Конфигурация Luna оформляется **настоящими пакетами pacman**, а не оверлеем
-`airootfs`: оверлей существует только на live-ISO и на установленную машину не
-попадает, а нам нужно, чтобы поставленная система получала те же дефолты и
-обновляла их обычным `pacman -Syu`.
+Luna's configuration is shipped as **real pacman packages** rather than as an
+`airootfs` overlay: the overlay exists only on the live ISO and never reaches
+the installed machine, whereas we want an installed system to get the same
+defaults and to keep updating them through an ordinary `pacman -Syu`.

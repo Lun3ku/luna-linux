@@ -1,4 +1,4 @@
-# Живой образ: sudo без пароля, потому что пароля у пользователя и нет.
-# На установленную систему этот файл не попадает — там правила задаёт
-# установщик, и пароль спрашивается как обычно.
+# The live image: sudo without a password, because the user has no password to
+# begin with. This file does not reach an installed system; there the rules are
+# written by the installer and the password is asked for as usual.
 luna ALL=(ALL:ALL) NOPASSWD: ALL

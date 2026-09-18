@@ -1,40 +1,40 @@
-# luna-base — база системы и слой надёжности Luna Linux.
-# luna-release — брендинг системы. Вынесен отдельным пакетом, чтобы его
-# можно было положить на загрузочный образ без 307 МБ base-devel.
+# luna-base is the base system and the reliability layer of Luna Linux.
+# luna-release carries the system branding. It is a separate package so that
+# it can go onto the boot image without 307 MB of base-devel.
 luna-release
-# luna-keyring — ключ, которым подписаны пакеты luna-*. Без него система
-# после перезагрузки не сможет проверить подпись собственных обновлений.
+# luna-keyring holds the key the luna-* packages are signed with. Without it
+# the system cannot verify the signature of its own updates after a reboot.
 luna-keyring
 #
-# Ядро здесь сознательно НЕ указано. Пользователь выбирает linux или
-# linux-zen в установщике, а headers обязаны соответствовать выбранному
-# ядру (linux-headers к linux, linux-zen-headers к linux-zen). Зашей мы
-# linux-headers сюда — на linux-zen приехали бы заголовки не от того ядра.
-# Пару «ядро + headers» ставит установщик.
+# The kernel is deliberately NOT listed here. The user picks linux or
+# linux-zen in the installer, and the headers must match the chosen kernel
+# (linux-headers for linux, linux-zen-headers for linux-zen). Hard-coding
+# linux-headers here would land headers from the wrong kernel on a linux-zen
+# system. The installer installs the kernel and its headers as a pair.
 
-# --- база ---
-base                 # метапакет базовой системы (аналог linux-base в Debian)
-base-devel           # компиляторы и makepkg: без них не собрать ничего из AUR
-linux-firmware       # прошивки железа
-mkinitcpio           # генератор initramfs, в base не входит
+# --- the base ---
+base                 # base system metapackage (the counterpart of linux-base in Debian)
+base-devel           # compilers and makepkg: nothing from the AUR builds without them
+linux-firmware       # hardware firmware
+mkinitcpio           # initramfs generator, not part of base
 sudo
 git
-nano                 # простой редактор, должен быть всегда
-vim                  # vi-совместимый, мышечная память
+nano                 # a simple editor, has to be there always
+vim                  # vi-compatible, for muscle memory
 networkmanager
 
-# --- надёжность: снапшоты и загрузчик ---
-btrfs-progs          # файловая система со снапшотами
-snapper              # управление снапшотами
-snap-pac             # снапшот автоматически перед каждой операцией pacman
-grub                 # загрузчик (systemd-boot не умеет грузиться в снапшот)
-grub-btrfs           # пункты меню GRUB для каждого снапшота
-inotify-tools        # нужен grub-btrfsd для слежения за снапшотами
+# --- reliability: snapshots and the bootloader ---
+btrfs-progs          # the filesystem with snapshots
+snapper              # snapshot management
+snap-pac             # takes a snapshot automatically before every pacman operation
+grub                 # bootloader (systemd-boot cannot boot into a snapshot)
+grub-btrfs           # a GRUB menu entry for every snapshot
+inotify-tools        # grub-btrfsd needs it to watch the snapshots
 efibootmgr
 
-# --- надёжность: память и обслуживание ---
-plymouth             # графическая заставка вместо потока текста ядра
-                     # при загрузке; тема luna идёт в этом же пакете
-zram-generator       # сжатый swap в ОЗУ вместо файла подкачки
-pacman-contrib       # paccache — автоочистка кэша пакетов
-reflector            # автообновление списка зеркал
+# --- reliability: memory and maintenance ---
+plymouth             # a graphical splash instead of a stream of kernel text
+                     # while booting; the luna theme ships in this package
+zram-generator       # compressed swap in RAM instead of a swap file
+pacman-contrib       # paccache, the automatic package cache cleanup
+reflector            # automatic mirror list refresh

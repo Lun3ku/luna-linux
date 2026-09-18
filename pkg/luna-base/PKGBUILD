@@ -2,13 +2,13 @@
 pkgname=luna-base
 pkgver=0.1.0
 pkgrel=1
-pkgdesc="Базовая система и настройки надёжности Luna Linux"
+pkgdesc="Base system and reliability settings for Luna Linux"
 arch=('any')
 url="https://github.com/luna-linux"
 license=('GPL-3.0-or-later')
 
-# Список зависимостей держим в отдельном файле: его проверяет
-# scripts/check-packages.sh, и в нём можно писать комментарии к каждой строке.
+# The dependency list is kept in a separate file: scripts/check-packages.sh
+# validates it, and it allows a comment next to every line.
 depends=($(grep -vE '^[[:space:]]*(#|$)' "$startdir/depends.txt" | awk '{print $1}'))
 
 install="$pkgname.install"
@@ -24,22 +24,24 @@ source=('grub-background.png'
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
-  # makepkg не поддерживает подкаталоги в локальных source: он отрезает путь
-  # и ищет файл рядом с PKGBUILD. Поэтому файлы лежат здесь же, а в $srcdir
-  # makepkg делает на них симлинки под теми же именами.
+  # makepkg does not support subdirectories in local sources: it strips the
+  # path and looks for the file next to the PKGBUILD. That is why the files
+  # live right here, and makepkg symlinks them into $srcdir under the same
+  # names.
 
-  # zram: конфиг в /usr/lib, чтобы пользователь мог переопределить его
-  # в /etc — генератор ищет в /usr/lib, /usr/local/lib, /etc и /run.
+  # zram: the config goes into /usr/lib so that the user can override it in
+  # /etc - the generator looks in /usr/lib, /usr/local/lib, /etc and /run.
   install -Dm644 "$srcdir/zram-generator.conf" "$pkgdir/usr/lib/systemd/zram-generator.conf"
 
-  # Фон меню загрузчика. GRUB подключает его через GRUB_BACKGROUND в
-  # /etc/default/grub — это делает установщик, потому что drop-in секций
-  # у того файла нет.
+  # The bootloader menu background. GRUB picks it up through GRUB_BACKGROUND in
+  # /etc/default/grub, which the installer writes, because that file has no
+  # drop-in sections.
   install -Dm644 "$srcdir/grub-background.png" "$pkgdir/usr/share/luna/grub-background.png"
 
-  # Загрузочная заставка. Кадры индикатора не дублируем — ссылаемся на
-  # тему spinner из пакета plymouth: тридцать одинаковых белых картинок
-  # в своём пакете смысла не имеют, а на тёмном фоне они смотрятся ровно.
+  # The boot splash. The throbber frames are not duplicated; we link to the
+  # spinner theme from the plymouth package instead. Thirty identical white
+  # images in our own package would serve no purpose, and on a dark background
+  # they look right as they are.
   local theme="$pkgdir/usr/share/plymouth/themes/luna"
   install -Dm644 "$srcdir/luna.plymouth" "$theme/luna.plymouth"
   install -Dm644 "$srcdir/plymouth-watermark.png" "$theme/watermark.png"

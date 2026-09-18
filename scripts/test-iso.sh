@@ -1,32 +1,32 @@
 #!/usr/bin/env bash
-# Запуск собранного образа Luna в QEMU.
+# Runs the built Luna image in QEMU.
 #
-# Режимы диска:
-#   (без аргументов)   живая загрузка ISO
-#   --install          подключить чистый диск и пройти установку
-#   --boot-installed   загрузить уже установленную систему
+# Disk modes:
+#   (no arguments)     boot the ISO live
+#   --install          attach a clean disk and go through the installation
+#   --boot-installed   boot the system that was already installed
 #
-# Режимы экрана:
-#   --vnc     (по умолчанию) VNC + websocket, смотреть через scripts/vm-view.sh
-#   --gtk     окно WSLg; на некоторых системах окно не всплывает
-#   --serial  без графики, вывод в текущий терминал
+# Screen modes:
+#   --vnc     (default) VNC + websocket, watch it through scripts/vm-view.sh
+#   --gtk     a WSLg window; on some systems the window never appears
+#   --serial  no graphics, output goes to the current terminal
 #
-# Прочее:
-#   --reset-nvram  очистить память UEFI перед запуском. Нужен, когда
-#             диск пересоздан: прошивка помнит запись загрузчика с прошлой
-#             установки, не находит её и уходит в сетевую загрузку, так и
-#             не добравшись до CD.
-#   --gl      аппаратное ускорение через virtio-gpu + virglrenderer.
-#             Без него Mesa уходит в программный рендеринг, и часть
-#             приложений (например hyprpaper) может не работать.
+# Other:
+#   --reset-nvram  clear the UEFI variables before starting. Needed when the
+#             disk has been recreated: the firmware remembers the bootloader
+#             entry from the previous installation, fails to find it and falls
+#             through to network boot without ever trying the CD.
+#   --gl      hardware acceleration through virtio-gpu + virglrenderer.
+#             Without it Mesa falls back to software rendering and some
+#             applications (hyprpaper, for one) may not work at all.
 #
-# В режимах --vnc и --gtk к машине подключается последовательный порт,
-# выведенный в файл /var/luna/guest.log. Изнутри гостя это /dev/ttyS0:
+# In --vnc and --gtk modes a serial port is attached to the machine and written
+# to /var/luna/guest.log. From inside the guest that port is /dev/ttyS0:
 #
-#     ваша-команда > /dev/ttyS0 2>&1
+#     your-command > /dev/ttyS0 2>&1
 #
-# так длинный вывод можно прочитать целиком на хосте, вместо того чтобы
-# выуживать его со скриншотов.
+# which is how long output can be read in full on the host instead of being
+# fished out of screenshots.
 set -euo pipefail
 
 LUNA_WORK=/var/luna
@@ -36,8 +36,8 @@ GUEST_LOG="$LUNA_WORK/guest.log"
 DISK_SIZE=${DISK_SIZE:-32G}
 MEM=${MEM:-4G}
 CPUS=${CPUS:-4}
-VNC_DISPLAY=${VNC_DISPLAY:-1}      # :1 → порт 5901
-VNC_WS=${VNC_WS:-5700}             # порт websocket для браузера
+VNC_DISPLAY=${VNC_DISPLAY:-1}      # :1 -> port 5901
+VNC_WS=${VNC_WS:-5700}             # websocket port for the browser
 
 msg() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m!!!\033[0m %s\n' "$*" >&2; exit 1; }
@@ -53,21 +53,21 @@ for a in "$@"; do
     --reset-nvram)    RESET_NVRAM=1 ;;
     --gtk)            SCREEN=gtk ;;
     --serial)         SCREEN=serial ;;
-    *) die "Неизвестный аргумент: $a" ;;
+    *) die "Unknown argument: $a" ;;
   esac
 done
 
 ISO=$(ls -t "$LUNA_WORK"/out/*.iso 2>/dev/null | head -n1 || true)
-[[ -n "$ISO" || $MODE == installed ]] || die "ISO не найден в $LUNA_WORK/out — сначала scripts/build-iso.sh"
+[[ -n "$ISO" || $MODE == installed ]] || die "No ISO found in $LUNA_WORK/out - run scripts/build-iso.sh first"
 
-# Путь к OVMF в Arch со временем менялся, поэтому ищем по вариантам.
+# The path to OVMF has changed over time in Arch, so try the known variants.
 OVMF=$(ls /usr/share/edk2/x64/OVMF_CODE.4m.fd /usr/share/edk2/x64/OVMF_CODE.fd \
           /usr/share/edk2-ovmf/x64/OVMF_CODE.fd 2>/dev/null | head -n1 || true)
 OVMF_VARS=$(ls /usr/share/edk2/x64/OVMF_VARS.4m.fd /usr/share/edk2/x64/OVMF_VARS.fd \
                /usr/share/edk2-ovmf/x64/OVMF_VARS.fd 2>/dev/null | head -n1 || true)
-[[ -n "$OVMF" ]] || die "OVMF не найден — pacman -S edk2-ovmf"
+[[ -n "$OVMF" ]] || die "OVMF not found - pacman -S edk2-ovmf"
 
-# Изменяемая копия NVRAM, чтобы не портить системный файл.
+# A writable copy of the NVRAM, so the system file is left alone.
 VARS="$LUNA_WORK/OVMF_VARS.fd"
 [[ -n "${RESET_NVRAM:-}" ]] && rm -f "$VARS"
 [[ -f "$VARS" ]] || cp "$OVMF_VARS" "$VARS"
@@ -83,17 +83,17 @@ args=(
 
 if [[ -n "${GL:-}" ]]; then
   args+=(-device virtio-vga-gl)
-  msg "Видео: virtio-vga-gl (аппаратное ускорение)"
+  msg "Video: virtio-vga-gl (hardware acceleration)"
 else
   args+=(-device virtio-vga)
 fi
 
 if [[ -e /dev/kvm && -r /dev/kvm ]]; then
   args+=(-enable-kvm -cpu host)
-  msg "KVM включён"
+  msg "KVM enabled"
 else
   args+=(-cpu max)
-  msg "KVM недоступен — эмуляция будет медленной"
+  msg "KVM unavailable - emulation will be slow"
 fi
 
 case "$MODE" in
@@ -101,17 +101,17 @@ case "$MODE" in
     args+=(-cdrom "$ISO" -boot d) ;;
   install)
     if [[ ! -f "$DISK" ]]; then
-      msg "Создаю чистый диск $DISK_SIZE"
+      msg "Creating a clean $DISK_SIZE disk"
       qemu-img create -f qcow2 "$DISK" "$DISK_SIZE" >/dev/null
-      # Вместе с диском обнуляем и память UEFI: иначе прошивка ищет
-      # загрузчик по записи от прошлой установки и уходит в сетевую
-      # загрузку, не пробуя CD.
+      # The UEFI variables are cleared along with the disk: otherwise the
+      # firmware looks for the bootloader recorded by the previous
+      # installation and falls through to network boot without trying the CD.
       rm -f "$VARS"; cp "$OVMF_VARS" "$VARS"
-      msg "Память UEFI очищена вместе с диском"
+      msg "UEFI variables cleared along with the disk"
     fi
     args+=(-drive "file=$DISK,if=virtio,format=qcow2" -cdrom "$ISO" -boot d) ;;
   installed)
-    [[ -f "$DISK" ]] || die "Диск $DISK не создан — сначала test-iso.sh --install"
+    [[ -f "$DISK" ]] || die "Disk $DISK does not exist - run test-iso.sh --install first"
     args+=(-drive "file=$DISK,if=virtio,format=qcow2" -boot c) ;;
 esac
 
@@ -119,8 +119,8 @@ case "$SCREEN" in
   vnc)
     args+=(-display none -vnc ":${VNC_DISPLAY},websocket=${VNC_WS}"
            -serial "file:$GUEST_LOG")
-    msg "Экран: VNC на :${VNC_DISPLAY}, websocket ${VNC_WS} — открой через scripts/vm-view.sh"
-    msg "Вывод гостя: $GUEST_LOG (внутри это /dev/ttyS0)" ;;
+    msg "Screen: VNC on :${VNC_DISPLAY}, websocket ${VNC_WS} - open it with scripts/vm-view.sh"
+    msg "Guest output: $GUEST_LOG (that is /dev/ttyS0 inside)" ;;
   gtk)
     args+=(-display gtk -serial "file:$GUEST_LOG") ;;
   serial)
@@ -128,5 +128,5 @@ case "$SCREEN" in
 esac
 
 rm -f "$QMP_SOCK" "$GUEST_LOG"
-msg "Режим: $MODE${ISO:+, образ $(basename "$ISO")}"
+msg "Mode: $MODE${ISO:+, image $(basename "$ISO")}"
 exec qemu-system-x86_64 "${args[@]}"

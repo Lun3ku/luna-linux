@@ -1,22 +1,22 @@
-# Экран входа живого образа Luna.
+# The login screen of the Luna live image.
 #
-# Перекрывает файл из пакета luna-desktop: оверлей airootfs копируется
-# после установки пакетов, поэтому побеждает эта версия. Отличие одно —
-# блок initial_session, то есть автоматический вход при загрузке образа:
-# человек, который только что записал флешку, должен увидеть рабочий стол,
-# а не запрос пароля, которого у него нет.
+# This overrides the file from the luna-desktop package: the airootfs overlay
+# is copied after the packages are installed, so this version wins. There is
+# exactly one difference, the initial_session block, which logs in
+# automatically when the image boots: somebody who has just written a USB stick
+# should see a desktop, not a prompt for a password they do not have.
 
 [terminal]
 vt = 1
 
-# Сюда попадаем после выхода из сеанса.
+# This is where we land after leaving a session.
 [default_session]
 command = "tuigreet --remember --remember-session --asterisks --time --sessions /usr/share/wayland-sessions --cmd /usr/bin/luna-session --greeting Luna"
 user = "greeter"
 
-# Автовход при первой загрузке.
-# uwsm поднимает Hyprland как настоящий systemd-сеанс, за счёт чего
-# стартуют панель, уведомления и обои.
+# Automatic login on the first boot.
+# uwsm brings Hyprland up as a real systemd session, which is what makes the
+# panel, the notifications and the wallpaper start.
 [initial_session]
 command = "/usr/bin/luna-session"
 user = "luna"

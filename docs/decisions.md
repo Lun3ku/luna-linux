@@ -1,142 +1,152 @@
-# Решения и добытые факты
+# Decisions and findings
 
-Всё ниже проверено на практике, а не взято из общих соображений. Даты —
-сентябрь 2026, версии пакетов актуальны на тот момент.
+Everything below was verified in practice rather than taken from first
+principles. The dates are September 2026, and the package versions are the
+ones current at that time.
 
-## Hyprland 0.56 конфигурируется на Lua
+## Hyprland 0.56 is configured in Lua
 
-Пакет `hyprland` больше **не** везёт пример `hyprland.conf` — вместо него
-`/usr/share/hypr/hyprland.lua`. В бинарнике есть строка:
+The `hyprland` package no longer ships an example `hyprland.conf`; what it
+ships instead is `/usr/share/hypr/hyprland.lua`. The binary contains the
+string:
 
 ```
 [cfg] Lua config not found, using legacy config at {}
 ```
 
-То есть Lua — основной формат, а привычный ini-подобный `hyprland.conf`
-остался как legacy. Luna пишет конфиг на Lua.
+So Lua is the primary format and the familiar ini-like `hyprland.conf` is
+what remains as legacy. Luna writes its config in Lua.
 
-Полное описание API лежит в самом пакете: `/usr/share/hypr/stubs/hl.meta.lua`
-(1777 строк аннотаций LuaLS). Это единственный надёжный источник — по нему
-сверен каждый вызов в нашем конфиге. Оттуда же полный список диспетчеров:
+The full API description lives in the package itself:
+`/usr/share/hypr/stubs/hl.meta.lua` (1777 lines of LuaLS annotations). That is
+the only dependable source, and every call in our config was checked against
+it. It is also where the complete list of dispatchers comes from:
 `hl.dsp.window.{close,float,fullscreen,center,pin,move,drag,resize,swap,...}`,
 `hl.dsp.focus`, `hl.dsp.workspace.toggle_special`, `hl.dsp.layout`.
 
-Остальные утилиты экосистемы (`hyprlock`, `hypridle`, `hyprpaper`) формат
-**не** меняли и по-прежнему используют свой hypr-lang `.conf`.
+The rest of the ecosystem tools (`hyprlock`, `hypridle`, `hyprpaper`) did
+**not** change format and still use their own hypr-lang `.conf`.
 
-## Сеанс запускается через uwsm, а не напрямую
+## The session starts through uwsm, not directly
 
-`hyprpaper`, `hypridle`, `hyprpolkitagent`, `cliphist`, `waybar`, `mako`,
-`blueman-applet` — у всех есть systemd-юниты пользователя, привязанные к
-`graphical-session.target`. Сам Hyprland этот target не поднимает, поэтому
-запуск «просто Hyprland» оставил бы их мёртвыми.
+`hyprpaper`, `hypridle`, `hyprpolkitagent`, `cliphist`, `waybar`, `mako` and
+`blueman-applet` all have systemd user units bound to
+`graphical-session.target`. Hyprland itself does not bring that target up, so
+starting "just Hyprland" would leave every one of them dead.
 
-Hyprland регистрирует два сеанса в `/usr/share/wayland-sessions`:
+Hyprland registers two sessions in `/usr/share/wayland-sessions`:
 
-| Файл | Exec |
+| File | Exec |
 |---|---|
 | `hyprland.desktop` | `/usr/bin/start-hyprland` |
 | `hyprland-uwsm.desktop` | `uwsm start -e -D Hyprland hyprland.desktop` |
 
-Luna использует второй. За счёт этого панель и уведомления ведёт systemd —
-он же их перезапускает при падении, — и в конфиге Hyprland почти нет
-автозапуска.
+Luna uses the second one. Because of that, systemd runs the panel and the
+notifications and restarts them when they die, and the Hyprland config has
+almost no autostart in it.
 
-## Hyprland не работает от root
+## Hyprland refuses to run as root
 
-В бинарнике есть флаг `--i-am-really-stupid`, отключающий проверку на root.
-Значит живому образу обязательно нужен обычный пользователь — отсюда сервис
-`luna-live-user.service` в оверлее ISO.
+The binary carries an `--i-am-really-stupid` flag that disables the root
+check. That means the live image has to have an ordinary user, which is where
+`luna-live-user.service` in the ISO overlay comes from.
 
-## Пользователя живого образа создаёт сервис, а не sysusers.d
+## The live image user is created by a service, not by sysusers.d
 
-Два независимых препятствия:
+Two independent obstacles:
 
-1. Пользователей при сборке образа создаёт **pacman-хук**
-   (`20-systemd-sysusers.hook`), а оверлей `airootfs` копируется уже после
-   установки пакетов. Файл в `airootfs/etc/sysusers.d/` хук не увидит.
-2. `systemd-sysusers.service` помечен `ConditionNeedsUpdate=|/etc` и при
-   загрузке может не запуститься вовсе.
+1. During an image build, users are created by a **pacman hook**
+   (`20-systemd-sysusers.hook`), while the `airootfs` overlay is copied only
+   after the packages are installed. The hook would never see a file in
+   `airootfs/etc/sysusers.d/`.
+2. `systemd-sysusers.service` is marked `ConditionNeedsUpdate=|/etc` and may
+   not run at boot at all.
 
-Поэтому пользователь создаётся явным oneshot-сервисом — тем же приёмом,
-которым сам archiso делает `pacman-init`.
+So the user is created by an explicit oneshot service, the same technique
+archiso itself uses for `pacman-init`.
 
-## Экран входа включается симлинком display-manager.service
+## The login screen is enabled by a display-manager.service symlink
 
-У `greetd.service` нет `WantedBy` — только `[Install] Alias=display-manager.service`.
-Запускает его `graphical.target`, в котором есть `Wants=display-manager.service`.
-Поэтому в образе нужны два симлинка: `default.target` → `graphical.target`
-и `display-manager.service` → `greetd.service`.
+`greetd.service` has no `WantedBy`, only `[Install] Alias=display-manager.service`.
+What starts it is `graphical.target`, which carries
+`Wants=display-manager.service`. The image therefore needs two symlinks:
+`default.target` -> `graphical.target` and `display-manager.service` ->
+`greetd.service`.
 
-## cow_spacesize нельзя задавать в процентах
+## cow_spacesize cannot be given as a percentage
 
-По умолчанию оверлей живой системы — **256 МБ**, этого мало даже чтобы
-поставить пару пакетов на пробу. Значение задаётся параметром ядра
-`cow_spacesize`, но в хуке archiso оно попадает не только в
-`mount -o size=`, но и в `truncate -s`, а `truncate` проценты не понимает.
-Поэтому только фиксированный размер. У нас `cow_spacesize=2G`.
+By default the overlay of the live system is **256 MB**, which is not enough
+even to install a couple of packages to try them out. The value is set by the
+`cow_spacesize` kernel parameter, but in the archiso hook it ends up not only
+in `mount -o size=` but also in `truncate -s`, and `truncate` does not
+understand percentages. A fixed size is therefore the only option. Ours is
+`cow_spacesize=2G`.
 
-## makepkg не поддерживает подкаталоги в локальных source
+## makepkg does not support subdirectories in local sources
 
-`source=('files/config.conf')` не работает: `get_filename` отрезает путь и
-makepkg ищет файл рядом с PKGBUILD. Поэтому файлы пакетов лежат в одном
-каталоге с PKGBUILD, без вложенности.
+`source=('files/config.conf')` does not work: `get_filename` strips the path
+and makepkg looks for the file next to the PKGBUILD. That is why package files
+live in the same directory as the PKGBUILD, with no nesting.
 
-## Чужие конфиги переопределяются drop-in, а не перезаписью
+## Other people's configs are overridden by drop-ins, not by overwriting
 
-`/etc/xdg/reflector/reflector.conf` и `/etc/greetd/config.toml` принадлежат
-своим пакетам и помечены как backup. Вместо того чтобы их переписывать,
-Luna кладёт systemd drop-in, переопределяющий `ExecStart`:
+`/etc/xdg/reflector/reflector.conf` and `/etc/greetd/config.toml` belong to
+their own packages and are marked as backup. Rather than overwrite them, Luna
+drops in a systemd override that replaces `ExecStart`:
 
-- `reflector.service.d/10-luna.conf` — свои аргументы вместо файла конфига;
-- `greetd.service.d/10-luna.conf` — `greetd --config /etc/greetd/luna.toml`.
+- `reflector.service.d/10-luna.conf` gives our own arguments instead of the
+  config file;
+- `greetd.service.d/10-luna.conf` gives `greetd --config /etc/greetd/luna.toml`.
 
-Так не возникает конфликта файлов и `.pacnew` при обновлениях.
+That way there is no file conflict and no `.pacnew` on updates.
 
-## os-release и приветствие входа
+## os-release and the login greeting
 
-`/usr/lib/os-release` принадлежит пакету `filesystem`, а `/etc/os-release` —
-это симлинк, не принадлежащий никому. Поэтому `luna-release` кладёт свой файл
-как `/usr/lib/os-release-luna` и переставляет симлинк из `.install`.
+`/usr/lib/os-release` belongs to the `filesystem` package, and
+`/etc/os-release` is a symlink that belongs to nobody. So `luna-release` puts
+its own file at `/usr/lib/os-release-luna` and repoints the symlink from its
+`.install`.
 
-Приятный побочный эффект: `/etc/issue` содержит `\S{PRETTY_NAME}`, то есть
-берёт имя прямо из os-release. Отдельно править приветствие входа не нужно.
+A pleasant side effect: `/etc/issue` contains `\S{PRETTY_NAME}`, that is, it
+takes the name straight out of os-release. The login greeting needs no
+separate editing.
 
-## pulseaudio и pipewire-pulse взаимоисключающи
+## pulseaudio and pipewire-pulse are mutually exclusive
 
-Проверено в обе стороны: `pipewire-pulse` конфликтует с `pulseaudio` и
-наоборот. При этом `pipewire-pulse` даёт `Provides: pulse-native-provider`,
-то есть интерфейс PulseAudio на месте и `pactl`, `pavucontrol`, браузеры
-работают без изменений. Для Hyprland pipewire обязателен: без него не
-работает захват экрана через `xdg-desktop-portal-hyprland`.
+Verified in both directions: `pipewire-pulse` conflicts with `pulseaudio` and
+the other way round. At the same time `pipewire-pulse` declares
+`Provides: pulse-native-provider`, so the PulseAudio interface is there and
+`pactl`, `pavucontrol` and browsers work unchanged. For Hyprland, pipewire is
+mandatory: without it screen capture through
+`xdg-desktop-portal-hyprland` does not work.
 
-## base-devel стоит 307 МБ
+## base-devel costs 307 MB
 
-17 пакетов сверх `base`, из них `gcc` — 221 МБ, `binutils` — 44 МБ.
-Входит в `luna-base`, потому что без него нельзя ни собрать модуль DKMS,
-ни поставить что-либо из AUR (а AUR-хелпер сам лежит в AUR, то есть без
-`makepkg` его не установить).
+17 packages on top of `base`, of which `gcc` is 221 MB and `binutils` 44 MB.
+It is part of `luna-base` because without it one can neither build a DKMS
+module nor install anything from the AUR (and an AUR helper itself lives in
+the AUR, so without `makepkg` it cannot be installed).
 
-Именно из-за этих 307 МБ брендинг вынесен в отдельный пакет `luna-release`:
-он попадает на загрузочный образ, а `luna-base` — только в устанавливаемую
-систему.
+Those 307 MB are exactly why the branding was split out into a separate
+`luna-release` package: that one goes onto the boot image, while `luna-base`
+goes only onto the installed system.
 
-## hyprpaper 0.8: схема конфига изменилась, вики устарела
+## hyprpaper 0.8: the config schema changed and the wiki is stale
 
-Обои не появлялись, в логе было только:
+The wallpaper never appeared, and the log held nothing but:
 
 ```
 Monitor Virtual-1 has no target: no wp will be created
 ```
 
-Причина: в hyprpaper 0.8 обои задаются **секцией**, а ключа `preload`
-не существует вовсе — бинарный поиск по программе даёт ноль вхождений
-строки `preload`, а в исходнике `src/config/ConfigManager.cpp`
-зарегистрированы `splash`, `splash_offset`, `splash_opacity`, `ipc`
-и специальная категория `wallpaper` с полями `monitor`, `path`,
-`fit_mode`, `timeout`, `order`, `recursive`.
+The reason: in hyprpaper 0.8 the wallpaper is set by a **section**, and the
+`preload` key does not exist at all. A binary search through the program
+returns zero occurrences of the string `preload`, while the source in
+`src/config/ConfigManager.cpp` registers `splash`, `splash_offset`,
+`splash_opacity`, `ipc` and a special `wallpaper` category with the fields
+`monitor`, `path`, `fit_mode`, `timeout`, `order` and `recursive`.
 
-Рабочий вид:
+The form that works:
 
 ```
 wallpaper {
@@ -146,164 +156,170 @@ wallpaper {
 }
 ```
 
-**Официальная вики на момент проверки описывала старый синтаксис.**
-Для hypr-экосистемы источником истины считаем исходник и бинарник, а не вики.
+**At the time of checking, the official wiki still described the old syntax.**
+For the hypr ecosystem we treat the source and the binary as the source of
+truth, not the wiki.
 
-Попутно в `hyprland.lua` выставлен `misc:background_color`: если hyprpaper
-однажды не поднимется, рабочий стол всё равно будет выглядеть намеренно,
-а не чёрным провалом.
+While we were there, `misc:background_color` was set in `hyprland.lua`: if
+hyprpaper ever fails to start, the desktop will still look deliberate instead
+of being a black hole.
 
-## Глифы Nerd Font нельзя писать живыми символами
+## Nerd Font glyphs must not be written as literal characters
 
-Иконки панели пропали: в записанном `waybar-config.jsonc` из десятка
-глифов осталось два. Символы Nerd Font живут в приватной области Unicode
-и теряются при передаче файла через инструменты, редакторы и терминалы —
-причём молча, оставляя пустые строки вместо иконок.
+The panel icons disappeared: out of a dozen glyphs in the written
+`waybar-config.jsonc`, two were left. Nerd Font characters live in the Unicode
+private use area and get lost when a file passes through tools, editors and
+terminals - silently, leaving empty strings where the icons were.
 
-Поэтому иконки записываются **escape-последовательностями JSON**, а файл
-остаётся чистым ASCII. За этим следит проверка `waybar глифы` в
-`scripts/lint-configs.sh`: она падает, если в конфиге появился живой
-символ приватной области.
+The icons are therefore written as **JSON escape sequences**, which keeps the
+file pure ASCII. The `waybar glyphs` check in `scripts/lint-configs.sh` watches
+over this: it fails if a literal private-use character appears in the config.
 
-Каждый код иконки проверен на наличие именно в JetBrainsMono Nerd Font:
+Every icon code was checked for actually being present in JetBrainsMono Nerd
+Font:
 
 ```bash
-fc-match ":charset=f111" family     # должен вернуть *JetBrainsMono*
+fc-match ":charset=f111" family     # should return *JetBrainsMono*
 ```
 
-Из проверенного набора в шрифте не оказалось только `U+F6A9`.
+Out of the set we checked, only `U+F6A9` turned out to be missing from the font.
 
-Имя семейства, кстати, правильное — `JetBrainsMono Nerd Font`. Ложный
-диагноз «имя неверное» возник из-за того, что в виртуалке проверка
-набиралась как `JetBrainsMono-Nerd-Font` (через дефисы, чтобы обойти
-пробелы в команде), а это другое имя, и fontconfig честно подставил
-замену.
+The family name, incidentally, is correct: `JetBrainsMono Nerd Font`. The false
+diagnosis of "wrong name" came from typing the check in the VM as
+`JetBrainsMono-Nerd-Font` (with hyphens, to work around the spaces in the
+command), which is a different name, and fontconfig honestly substituted a
+replacement.
 
-## В WSL нет /dev/dri — аппаратного ускорения в виртуалке не будет
+## WSL has no /dev/dri, so there is no hardware acceleration in the VM
 
-Узла рендеринга в дистрибутиве WSL не существует, поэтому `virtio-vga-gl`
-и virgl здесь бесполезны: гость всегда работает на программном рендеринге
-(`kms_swrast`), и EGL в логах ругается. Опция `--gl` в `scripts/test-iso.sh`
-оставлена для запуска на реальном железе.
+The render node does not exist inside a WSL distribution, which makes
+`virtio-vga-gl` and virgl useless here: the guest always runs on software
+rendering (`kms_swrast`) and EGL complains in the logs. The `--gl` option in
+`scripts/test-iso.sh` is kept for running on real hardware.
 
-Важно не списывать проблемы на это ограничение раньше времени: отсутствие
-обоев выглядело как следствие программного рендеринга, а оказалось ошибкой
-в конфиге.
+It is important not to blame this limitation too early: the missing wallpaper
+looked like a consequence of software rendering and turned out to be a mistake
+in the config.
 
-## Канал вывода из гостя в файл на хосте
+## A channel from the guest into a file on the host
 
-Выуживать длинные логи со скриншотов невыносимо, поэтому виртуалке
-подключён последовательный порт, выведенный в `/var/luna/guest.log`.
-Изнутри гостя:
+Fishing long logs out of screenshots is unbearable, so the VM has a serial port
+attached and written to `/var/luna/guest.log`. From inside the guest:
 
 ```bash
 systemctl --user status hyprpaper -l -n 40 | sudo tee /dev/ttyS0 > /dev/null
 ```
 
-`sudo` нужен, потому что `/dev/ttyS0` принадлежит `root:uucp`. Живому
-пользователю образа добавлена группа `uucp`, так что после пересборки
-перенаправление работает и без sudo.
+`sudo` is needed because `/dev/ttyS0` belongs to `root:uucp`. The live image
+user was added to the `uucp` group, so after a rebuild the redirection works
+without sudo too.
 
-## blueman-applet по умолчанию не включён
+## blueman-applet is not enabled by default
 
-Без bluetooth-адаптера юнит просто падает и портит счётчик упавших
-сервисов на панели. Статус bluetooth и так виден в модуле waybar, а кому
-нужен апплет — `systemctl --user enable --now blueman-applet.service`.
+Without a bluetooth adapter the unit simply fails and spoils the failed-service
+count on the panel. The bluetooth status is visible in the waybar module
+anyway, and anyone who wants the applet can run
+`systemctl --user enable --now blueman-applet.service`.
 
-## Обои ставит swaybg, а не hyprpaper
+## The wallpaper is set by swaybg, not by hyprpaper
 
-После перехода на новую схему конфига hyprpaper перестал жаловаться на
-отсутствие цели — и начал падать с SIGSEGV, перезапускаясь до упора в
-лимит systemd:
+After the move to the new config schema, hyprpaper stopped complaining about a
+missing target and started crashing with SIGSEGV instead, restarting until it
+hit the systemd limit:
 
 ```
 hyprpaper.service: Main process exited, code=dumped, status=11/SEGV
 hyprpaper.service: Start request repeated too quickly.
 ```
 
-Проверка на штатных обоях самого Hyprland (`/usr/share/hypr/wall0.png`)
-дала тот же SIGSEGV, то есть дело не в нашей картинке. Падает он там, где
-нет работающего EGL — в логе перед этим:
+Testing it on Hyprland's own stock wallpaper (`/usr/share/hypr/wall0.png`) gave
+the same SIGSEGV, so our picture was not to blame. It crashes wherever there is
+no working EGL; the log right before it says:
 
 ```
 ERR from hyprtoolkit ]: [EGL] Command eglInitialize errored out with EGL_NOT_INITIALIZED
 MESA-EGL: warning: NEEDS EXTENSION: falling back to kms_swrast
 ```
 
-То есть в любой виртуалке без проброса GPU. Дистрибутив, у которого обои
-падают в виртуалке, трудно назвать QoL-дистрибутивом: в виртуалках Linux
-запускают постоянно, и первое знакомство с Luna у многих будет именно там.
+That is, in any virtual machine without a GPU passed through. A distribution
+whose wallpaper crashes in a VM is hard to call a quality-of-life
+distribution: people run Linux in VMs constantly, and for many the first
+meeting with Luna will happen exactly there.
 
-**swaybg в тех же условиях отработал сразу**: он рисует через cairo и
-обычные буферы `wl_shm`, GL ему не нужен. Весит 34 КБ.
+**swaybg worked immediately under the same conditions**: it draws through cairo
+and ordinary `wl_shm` buffers and needs no GL. It weighs 34 KB.
 
-Поэтому обои ставит юнит `luna-wallpaper.service`, запускающий скрипт
-`/usr/bin/luna-wallpaper` поверх swaybg. hyprpaper остаётся установленным
-как альтернатива: у кого есть GPU и нужен IPC-контроль обоев —
+So the wallpaper is set by the `luna-wallpaper.service` unit, which runs the
+`/usr/bin/luna-wallpaper` script on top of swaybg. hyprpaper stays installed as
+an alternative for anyone who has a GPU and wants IPC control over the
+wallpaper:
 
 ```bash
 systemctl --user disable --now luna-wallpaper
 systemctl --user enable  --now hyprpaper
 ```
 
-Заодно появилась мелкая, но приятная вещь: сменить обои можно одной строкой,
-без правки конфигов и юнитов —
+A small but pleasant thing came out of it: the wallpaper can be changed with a
+single line, without editing configs or units:
 
 ```bash
 echo /path/to/picture.png > ~/.config/luna/wallpaper
 systemctl --user restart luna-wallpaper
 ```
 
-Если в файле окажется ерунда, скрипт молча возьмёт обои по умолчанию:
-остаться из-за опечатки с чёрным экраном — плохой сценарий.
+If the file contains nonsense the script quietly falls back to the default
+wallpaper: being left with a black screen because of a typo is a poor outcome.
 
-## Язык системы — английский, комментарии — русские
+## The system language is English, and so are the comments
 
-Интерфейс Luna полностью на английском: подписи лончера, подсказки панели,
-экран блокировки, описания юнитов в `systemctl`. Комментарии в конфигах
-остаются русскими — они адресованы тому, кто эти конфиги правит, а не
-пользователю системы.
+Luna's interface is entirely in English: launcher labels, panel tooltips, the
+lock screen, unit descriptions in `systemctl`. The comments in the configs are
+English too. They were Russian at first, addressed to whoever edits the
+configs rather than to whoever uses the system, and were translated later so
+that the repository reads in one language throughout. The commit messages
+before that point were left in Russian: rewriting them would change every
+commit hash, and the v1.0 release tag is pinned to one of them.
 
-Часы — 12-часовые: `"format": "{:%I:%M %p}"`.
+The clock is 12-hour: `"format": "{:%I:%M %p}"`.
 
-**Параметр `locale` в модуле clock указывать нельзя.** Попытка привязать
-его к `en_US.UTF-8` полностью отключила часы:
+**The `locale` parameter must not be set in the clock module.** Pinning it to
+`en_US.UTF-8` switched the clock off entirely:
 
 ```
 module clock: Disabling module "clock",
 locale::facet::_S_create_c_locale name not valid
 ```
 
-Причина оказалась глубже часов: в живой системе `locale -a` выдавала
-только `C`, `C.utf8` и `POSIX` — **ни одной сгенерированной UTF-8-локали**.
-Это ломает не только часы, но и сортировку с форматированием дат.
+The cause ran deeper than the clock: on the live system `locale -a` listed only
+`C`, `C.utf8` and `POSIX`, that is, **not a single generated UTF-8 locale**.
+That breaks more than the clock; sorting and date formatting go with it.
 
-Поэтому локаль генерируется по-настоящему, в `.install` пакета
-`luna-release`: он раскомментирует `en_US.UTF-8` в `/etc/locale.gen` и
-запускает `locale-gen`. Правка чужого файла здесь оправдана — механизма
-drop-in у glibc нет, а локали, созданные напрямую через `localedef`,
-затираются при следующем `locale-gen`. Файл помечен у glibc как backup,
-так что правка переживает обновления.
+So the locale is generated for real, in the `.install` of the `luna-release`
+package: it uncomments `en_US.UTF-8` in `/etc/locale.gen` and runs
+`locale-gen`. Editing somebody else's file is justified here - glibc has no
+drop-in mechanism, and locales created directly with `localedef` are wiped by
+the next `locale-gen`. The file is marked as backup by glibc, so the edit
+survives updates.
 
-Скрипт `.install` срабатывает и при сборке образа: mkarchiso ставит пакеты
-обычным pacman, значит локаль оказывается уже внутри ISO.
+The `.install` script also runs during an image build: mkarchiso installs
+packages with ordinary pacman, so the locale ends up inside the ISO already.
 
-На экране блокировки для того же служит встроенная переменная hyprlock
-`$TIME12`; обычный `$TIME` даёт 24 часа.
+On the lock screen the same job is done by hyprlock's built-in `$TIME12`
+variable; plain `$TIME` gives 24 hours.
 
-Раскладка клавиатуры при этом остаётся `us,ru` с переключением по
-Alt+Shift: английский интерфейс не значит, что не надо печатать по-русски.
+The keyboard layout stays `us,ru` with Alt+Shift to switch: an English
+interface does not mean there is no need to type in Russian.
 
-## На живом образе замаскирован systemd-loop@.service
+## systemd-loop@.service is masked on the live image
 
-При загрузке с CD-привода systemd создаёт экземпляр `systemd-loop@` для
-самого привода, и он падает:
+When booting from a CD drive, systemd creates a `systemd-loop@` instance for
+the drive itself, and it fails:
 
 ```
 systemd-loop@...block-sr0.service  failed  Attach File /sys/devices/...
 ```
 
-Срабатывает правило в `/usr/lib/udev/rules.d/99-systemd.rules`:
+The rule that fires is in `/usr/lib/udev/rules.d/99-systemd.rules`:
 
 ```
 SUBSYSTEM=="block", ENV{ID_CDROM}=="1",
@@ -311,309 +327,325 @@ ENV{ID_PART_GPT_AUTO_ROOT_DISK_NEEDS_LOOP}=="1",
   ENV{SYSTEMD_WANTS}+="systemd-loop@.service"
 ```
 
-Механизм задуман, чтобы подставить loop-устройство, если ядро не разбирает
-GPT на диске, загруженном по El Torito. Но archiso уже маскирует
-`systemd-gpt-auto-generator` — единственного потребителя этой конструкции.
-То есть привязка бессмысленна и умеет только падать.
+The mechanism is meant to supply a loop device when the kernel does not parse
+the GPT on a disk booted through El Torito. But archiso already masks
+`systemd-gpt-auto-generator`, the only consumer of that construction. The
+binding is therefore pointless and can do nothing but fail.
 
-Само по себе безвредно, но панель Luna показывает счётчик упавших сервисов,
-и постоянная ложная тревога приучает его игнорировать — а смысл модуля
-ровно в обратном. Поэтому в оверлее образа лежит
+Harmless in itself, but the Luna panel shows a failed-service counter, and a
+permanent false alarm teaches people to ignore it, which is precisely the
+opposite of what the module is for. So the image overlay contains
 `airootfs/etc/systemd/system/systemd-loop@.service -> /dev/null`.
 
-Маскировка живёт **только в образе**. На установленной системе загрузка
-идёт не с оптического привода, `ID_CDROM` не выставлен, и правило не
-срабатывает вовсе — как и при загрузке образа с флешки.
+The mask lives **only on the image**. On an installed system the boot does not
+come from an optical drive, `ID_CDROM` is not set, and the rule never fires at
+all, just as it does not when the image is booted from a USB stick.
 
-## Значок съезжает по вертикали — виноват глиф, а не шрифт
+## An icon sitting off-centre is the glyph's fault, not the font's
 
-Значок сети в панели сидел заметно ниже соседних. Первая гипотеза —
-метрики шрифта, и вариант `JetBrainsMono Nerd Font Mono` для модулей из
-одного значка. **Не помогло**: после пересборки значок остался на месте.
+The network icon in the panel sat noticeably lower than its neighbours. The
+first hypothesis was font metrics, and the `JetBrainsMono Nerd Font Mono`
+variant was tried for single-icon modules. **It did not help**: after a rebuild
+the icon stayed exactly where it was.
 
-Дело в самом глифе: `sitemap` (U+F0E8) во Font Awesome нарисован со
-смещением вниз относительно базовой линии. Подсказка была на том же
-экране — круглый значок часов (U+F017) центрировался идеально.
+It is the glyph itself: `sitemap` (U+F0E8) in Font Awesome is drawn offset
+downwards from the baseline. The hint was on the same screen - the round clock
+icon (U+F017) centred perfectly.
 
-Лечится заменой глифа, а не правкой CSS. Ethernet переведён на глобус
-(U+F0AC), тоже круглый. Шрифтовая правка откачена: она ничего не давала,
-а комментарий к ней утверждал бы неправду.
+The cure is a different glyph, not a CSS tweak. Ethernet was moved to the globe
+(U+F0AC), which is round as well. The font change was reverted: it achieved
+nothing, and a comment explaining it would have stated something untrue.
 
-Практическое правило: если значок съезжает, ищи другой глиф, а круглые
-садятся ровно почти всегда.
+The practical rule: if an icon sits off-centre, look for a different glyph, and
+round ones almost always sit correctly.
 
-Разглядывать такое на общем скриншоте бесполезно — панель высотой
-36 пикселей. Для этого написан `scripts/zoom-shot.py`: вырезает область
-и увеличивает без внешних зависимостей, PNG разбирается через zlib.
+Inspecting that sort of thing on a full screenshot is hopeless - the panel is
+36 pixels tall. That is what `scripts/zoom-shot.py` was written for: it crops a
+region and enlarges it with no external dependencies, parsing the PNG through
+zlib.
 
 ```bash
-python scripts/zoom-shot.py снимок.png вырезка.png 965 4 300 40 5
+python scripts/zoom-shot.py shot.png crop.png 965 4 300 40 5
 ```
 
-## Пустая кнопка в системном лотке
+## An empty button in the system tray
 
-Справа от часов висела плашка без значка. В лотке сидел единственный
-элемент — `nm-applet`, который запускался из конфига Hyprland. На живом
-образе сетью управляет `systemd-networkd`, поэтому апплету нечего было
-показывать.
+A pill with no icon hung to the right of the clock. The tray held exactly one
+item, `nm-applet`, which was started from the Hyprland config. On the live
+image the network is managed by `systemd-networkd`, so the applet had nothing
+to show.
 
-Автозапуск убран: состояние сети видно в модуле панели, по клику
-открывается `nmtui`. Пакет `network-manager-applet` оставлен — из него
-пригодится `nm-connection-editor` на установленной системе.
+The autostart was removed: the network state is visible in the panel module,
+and clicking it opens `nmtui`. The `network-manager-applet` package was kept -
+`nm-connection-editor` from it is useful on an installed system.
 
-Заодно у модуля `tray` убран фон. Плашка рисовалась бы даже пустой, а
-кнопка неизвестного назначения раздражает сильнее, чем отсутствие
-подложки под значками.
+The `tray` module also lost its background while we were there. The pill would
+be drawn even when empty, and a button of unknown purpose is more irritating
+than the absence of a backdrop behind the icons.
 
-## Hyprland регистрирует два сеанса, и обычный — ловушка
+## Hyprland registers two sessions, and the ordinary one is a trap
 
-Установка прошла успешно, система загрузилась, вход сработал — а рабочего
-стола не было: только фон и курсор. Замер на установленной машине:
+The installation succeeded, the system booted, the login worked - and there was
+no desktop, only a background and a cursor. Measured on the installed machine:
 
 ```
 graphical-session.target  inactive
 waybar                    inactive
 luna-wallpaper            inactive
-XDG_CURRENT_DESKTOP       (пусто)
+XDG_CURRENT_DESKTOP       (empty)
 ```
 
-Причина: Hyprland кладёт в `/usr/share/wayland-sessions` **два** файла —
-`hyprland.desktop` (запускает `start-hyprland`) и `hyprland-uwsm.desktop`
-(запускает `uwsm start`). Первый не создаёт systemd-сессию вообще, а все
-наши юниты привязаны к `graphical-session.target`. tuigreet по умолчанию
-берёт первый сеанс из списка — то есть именно сломанный.
+The cause: Hyprland puts **two** files into `/usr/share/wayland-sessions`,
+`hyprland.desktop` (which runs `start-hyprland`) and `hyprland-uwsm.desktop`
+(which runs `uwsm start`). The first creates no systemd session at all, while
+every one of our units is bound to `graphical-session.target`. By default
+tuigreet takes the first session in the list, which is exactly the broken one.
 
-Исправлено двумя слоями, потому что одного мало:
+Fixed in two layers, because one is not enough:
 
-1. `/usr/bin/luna-session` — обёртка, которую экран входа получает через
-   `--cmd`. По умолчанию всегда запускается вариант под uwsm, независимо
-   от порядка файлов в каталоге сеансов. Выбор через F3 сохраняется.
-2. Страховка в `hyprland.lua`: если `graphical-session.target` неактивен,
-   конфиг импортирует переменные окружения и поднимает target сам. Иначе
-   обычный пункт в меню входа остаётся ловушкой для того, кто его выберет,
-   — и для того, кто запустит `Hyprland` руками из консоли.
+1. `/usr/bin/luna-session`, a wrapper the login screen receives through
+   `--cmd`. By default it always starts the uwsm variant, regardless of the
+   order of files in the sessions directory. Choosing another one with F3 still
+   works.
+2. A safety net in `hyprland.lua`: if `graphical-session.target` is inactive,
+   the config imports the environment variables and brings the target up
+   itself. Otherwise the ordinary entry in the login menu stays a trap for
+   whoever picks it, and for whoever runs `Hyprland` by hand from a console.
 
-После исправления на установленной системе: все юниты `active`,
-`XDG_CURRENT_DESKTOP=Hyprland` и в окружении приложений, и в systemd,
-упавших сервисов нет.
+After the fix, on the installed system: every unit `active`,
+`XDG_CURRENT_DESKTOP=Hyprland` both in the applications' environment and in
+systemd, and no failed services.
 
-## Память UEFI в тестовой виртуалке переживает удаление диска
+## UEFI variables in the test VM survive deleting the disk
 
-Симптом выглядел как «установщик сломался»: виртуалка не грузилась вообще.
-На деле прошивка пыталась загрузить запись `Boot0009 "Luna"`, оставшуюся в
-NVRAM от прошлой установки, не находила её на чистом диске, перебирала PXE
-и HTTP-загрузку и сдавалась, **так и не попробовав CD**.
+The symptom looked like "the installer is broken": the VM would not boot at
+all. What actually happened was that the firmware tried to load the
+`Boot0009 "Luna"` entry left in NVRAM by the previous installation, failed to
+find it on a clean disk, went through PXE and HTTP boot and gave up **without
+ever trying the CD**.
 
-NVRAM живёт отдельным файлом `OVMF_VARS.fd` и не стирается вместе с
-qcow2-диском. Поэтому `scripts/test-iso.sh` теперь обнуляет её всякий раз,
-когда создаёт новый диск, плюс есть флаг `--reset-nvram`.
+The NVRAM lives in a separate `OVMF_VARS.fd` file and is not erased along with
+the qcow2 disk. So `scripts/test-iso.sh` now clears it whenever it creates a
+new disk, and there is a `--reset-nvram` flag as well.
 
-Класс ошибок, который легко списать на код дистрибутива и потом искать
-не там.
+This is the class of failure that is easy to blame on the distribution's own
+code and then spend a long time looking for in the wrong place.
 
-## Что проверено на установленной системе
+## What has been verified on an installed system
 
-Не «должно работать», а проверено запуском:
+Not "should work", but verified by running it:
 
-- установщик проходит целиком, от разметки до настройки снапшотов;
-- диск размечен как задумано: `vda1` vfat `LUNA_EFI` → `/efi`,
-  `vda2` btrfs `Luna` с подтомами `@ @home @snapshots @log @pkg`;
-- прошивка грузится через `\EFI\Luna\grubx64.efi`;
-- рабочий стол поднимается полностью, `systemctl --failed` пуст;
-- `snapper` работает, а `grub-btrfsd` сам перегенерирует
-  `/boot/grub/grub-btrfs.cfg` при появлении снапшота — то есть пункт
-  отката появляется в меню загрузчика без ручных действий.
+- the installer goes through from partitioning to configuring snapshots;
+- the disk is laid out as intended: `vda1` vfat `LUNA_EFI` -> `/efi`,
+  `vda2` btrfs `Luna` with the subvolumes `@ @home @snapshots @log @pkg`;
+- the firmware boots through `\EFI\Luna\grubx64.efi`;
+- the desktop comes up in full and `systemctl --failed` is empty;
+- `snapper` works, and `grub-btrfsd` regenerates
+  `/boot/grub/grub-btrfs.cfg` by itself when a snapshot appears, so the
+  rollback entry shows up in the bootloader menu with no manual steps.
 
-## Брендинг: SVG-исходники, PNG — производные
+## Branding: SVG sources, PNGs derived
 
-Картинки не лежат в репозитории непрозрачными бинарниками. В `branding/`
-живут SVG, которые правятся текстом и осмысленно версионируются, а
-`scripts/make-branding.sh` рендерит из них PNG нужных размеров.
+The images are not stored in the repository as opaque binaries. `branding/`
+holds SVGs, which are edited as text and versioned meaningfully, and
+`scripts/make-branding.sh` renders the PNGs of the needed sizes out of them.
 
-Рендерит `rsvg-convert` из librsvg — он уже есть на сборочном хосте как
-зависимость gtk, поэтому отдельный imagemagick не понадобился.
+The renderer is `rsvg-convert` from librsvg, which is already on the build host
+as a dependency of gtk, so a separate imagemagick was not needed.
 
-### Заставка загрузочного меню была арчевой
+### The boot menu splash used to be Arch's
 
-В профиле releng мы унаследовали `syslinux/splash.png` — логотип Arch
-Linux с подписью «A simple, lightweight linux distribution». Для
-производного дистрибутива это не только несостыковка стиля, но и чужой
-товарный знак внутри образа. Заменено своей заставкой.
+From the releng profile we inherited `syslinux/splash.png`, the Arch Linux logo
+with the caption "A simple, lightweight linux distribution". For a derivative
+distribution that is not only a mismatch in style but somebody else's trademark
+inside the image. Replaced with our own splash.
 
-Она работает при загрузке с BIOS: mkarchiso копирует именно этот файл
+It is used when booting from BIOS: mkarchiso copies exactly this file
 (`install -m 0644 -- "${profile}/syslinux/splash.png" ...`).
 
-### UEFI-меню образа оставлено на systemd-boot
+### The image's UEFI menu was left on systemd-boot (later reversed)
 
-Пробовали перевести его на GRUB ради фоновой картинки — archiso это
-поддерживает (`uefi-x64.grub.esp`). Но выяснилось, что mkarchiso копирует
-из каталога `grub/` профиля **только файлы `.cfg`**, а сам конфиг кладёт
-в `/boot/grub/grub.cfg` на образе. Положить туда PNG штатными средствами
-нельзя, а без фона смена загрузчика даёт почти ничего.
+We tried moving it to GRUB for the sake of a background image - archiso
+supports that (`uefi-x64.grub.esp`). It turned out that mkarchiso copies **only
+`.cfg` files** out of the profile's `grub/` directory, putting the config at
+`/boot/grub/grub.cfg` on the image. A PNG cannot be placed there by supported
+means, and without a background the change of bootloader gains almost nothing.
 
-Решено не менять работающий загрузчик образа ради нулевого выигрыша.
-Вернуться к этому можно, если понадобится полноценная тема GRUB на образе
-— тогда придётся обходить ограничение mkarchiso.
+The decision at the time was not to change a working bootloader for zero gain.
 
-### Фон GRUB рендерится в 16:9
+**This was later reversed, for a completely different reason.** See "A quarter
+of a gigabyte was sitting in a duplicate kernel" below: systemd-boot demands a
+second copy of the kernel and the initramfs inside the bootable FAT image, and
+that copy weighed 261 MiB. The background picture is still not possible, but
+the weight decided it. A reverted decision is worth recording together with its
+reason, because the reason can stop outweighing the alternative.
 
-Первый вариант был 4:3, и на широком экране луна становилась заметно
-эллиптической: GRUB растягивает фон на весь экран, не сохраняя пропорции.
-16:9 — наименьшее зло для большинства мониторов.
+### The GRUB background is rendered at 16:9
 
-### Логотип в терминале посчитан, а не подобран
+The first attempt was 4:3, and on a wide screen the moon became noticeably
+elliptical: GRUB stretches the background across the whole screen without
+preserving the aspect ratio. 16:9 is the lesser evil for most monitors.
 
-Луна для fastfetch рисуется полублочными символами по формуле окружности
-(`scripts/` не нужен, генератор разовый). Первый вариант вышел
-приплюснутым: я применил поправку на пропорции шрифта, хотя при
-полублочных символах пиксельная сетка **уже квадратная** — каждая ячейка
-несёт два пикселя по вертикали.
+### The terminal logo was computed, not eyeballed
 
-Цвета заданы метками `$1` и `$2`, которые подставляет сам fastfetch, так
-что файл остаётся обычным текстом без управляющих последовательностей —
-их, как выяснилось на глифах Nerd Font, легко потерять при передаче.
+The moon for fastfetch is drawn with half-block characters from a circle
+formula (no script in `scripts/` is needed, the generator was a one-off). The
+first attempt came out squashed: I applied a correction for the font's aspect
+ratio, although with half-block characters the pixel grid is **already square**
+- each cell carries two pixels vertically.
 
-### Заставка Plymouth собрана на штатном модуле
+The colours are given as the markers `$1` and `$2`, which fastfetch substitutes
+itself, so the file stays plain text with no escape sequences - and those, as
+the Nerd Font glyphs showed, are easy to lose in transit.
 
-Тема Luna использует `two-step` — тот же модуль, что у темы `spinner`.
-Тридцать кадров индикатора не дублируются, а подключаются символическими
-ссылками на `spinner`: свои белые точки рисовать незачем, а на тёмном
-фоне они смотрятся ровно. Своё в теме — водяной знак с луной и цвета.
+### The Plymouth splash is built on the stock module
 
-Перед этим проверено, что `two-step.so` вообще есть в пакете: хук
-mkinitcpio **отказывается собирать initramfs**, если модуля темы нет
-(`error "The default plymouth plugin (%s) doesn't exist"; return 1`), а
-это прямой путь к незагружающейся системе.
+The Luna theme uses `two-step`, the same module the `spinner` theme uses. The
+thirty throbber frames are not duplicated but linked symbolically to
+`spinner`: there is no point drawing our own white dots, and on a dark
+background they look right as they are. What is ours in the theme is the moon
+watermark and the colours.
 
-Тему назначает `plymouth-set-default-theme` из `.install` пакета, а не
-подмена `/etc/plymouth/plymouthd.conf` — тот файл принадлежит пакету
-plymouth. При удалении `luna-base` тема возвращается на `bgrt`, иначе
-plymouth остался бы ссылаться на исчезающий каталог.
+Before that we checked that `two-step.so` is present in the package at all: the
+mkinitcpio hook **refuses to build an initramfs** if the theme module is
+missing (`error "The default plymouth plugin (%s) doesn't exist"; return 1`),
+which is a direct route to a system that will not boot.
 
-Проверено на установленной системе: тема `luna`, в `/proc/cmdline` есть
-`splash`, `plymouth-quit-wait` активен. Показать себя заставка толком не
-успевает — загрузка занимает около десяти секунд.
+The theme is selected by `plymouth-set-default-theme` from the package's
+`.install` rather than by replacing `/etc/plymouth/plymouthd.conf`, which
+belongs to the plymouth package. When `luna-base` is removed the theme goes
+back to `bgrt`, otherwise plymouth would keep pointing at a directory that is
+about to disappear.
 
-## Вычитка списков пакетов: где были деньги, а где нет
+Verified on an installed system: the theme is `luna`, `/proc/cmdline` contains
+`splash`, and `plymouth-quit-wait` is active. The splash barely gets a chance
+to show itself - booting takes about ten seconds.
 
-Вычитка сделана по цифрам, а не на глаз: посчитан установленный размер
-каждого пакета из всех списков.
+## Proofreading the package lists: where the money was and where it was not
 
-### Шрифт с иконками: 232 МиБ → 10 МиБ
+The review was done by the numbers rather than by eye: the installed size of
+every package in every list was measured.
 
-Самая крупная находка. Пакет `ttf-jetbrains-mono-nerd` весит **231.9 МиБ**
-и содержит 96 файлов: все начертания всех вариантов (Mono, Propo, NL,
-от Thin до ExtraBold, с курсивами). Нужны из них два.
+### The icon font: 232 MiB -> 10 MiB
 
-Замена: `ttf-jetbrains-mono` (7.4 МиБ) + `ttf-nerd-fonts-symbols-mono`
-(2.5 МиБ). Fontconfig сам подставляет иконки из символьного шрифта.
-Проверено по всем используемым кодам:
+The biggest find. The `ttf-jetbrains-mono-nerd` package weighs **231.9 MiB**
+and contains 96 files: every weight of every variant (Mono, Propo, NL, from
+Thin to ExtraBold, with italics). Two of them are needed.
+
+The replacement: `ttf-jetbrains-mono` (7.4 MiB) + `ttf-nerd-fonts-symbols-mono`
+(2.5 MiB). Fontconfig substitutes the icons from the symbol font by itself.
+Verified against every code in use:
 
 ```
 fc-match ":charset=f111"  ->  Symbols Nerd Font Mono
 fc-match "JetBrains Mono" ->  JetBrains Mono
 ```
 
-Имя семейства в конфигах изменено с `JetBrainsMono Nerd Font` на
-`JetBrains Mono`, панель проверена загрузкой — иконки на месте.
+The family name in the configs was changed from `JetBrainsMono Nerd Font` to
+`JetBrains Mono`, and the panel was verified by booting it - the icons are
+there.
 
-### Список образа трогать не стоит
+### The image's package list is best left alone
 
-Посчитаны все кандидаты на удаление: сетевые сканеры, средства
-клонирования дисков, VPN-клиенты, IRC, текстовый браузер, средства
-диагностики загрузки. Набирается около **100 МБ — 4% образа**.
+Every candidate for removal was measured: network scanners, disk cloning tools,
+VPN clients, IRC, a text browser, boot diagnostics. They add up to about
+**100 MB, 4% of the image**.
 
-Взамен теряется работающий спасательный набор, а `open-vm-tools` и
-гостевые дополнения VirtualBox прямо улучшают работу в виртуалке, где
-дистрибутив чаще всего и пробуют в первый раз. Отрицательный результат
-тоже результат: список унаследован от releng и в таком виде оправдан.
+What would be lost in exchange is a working rescue kit, and `open-vm-tools`
+along with the VirtualBox guest additions directly improve life inside a
+virtual machine, which is where the distribution is most often tried first. A
+negative result is a result too: the list is inherited from releng and is
+justified as it stands.
 
-### Открытый вопрос: noto-fonts-cjk, 299 МиБ
+### An open question: noto-fonts-cjk, 299 MiB
 
-Шрифты для китайского, японского и корейского. Без них такой текст
-показывается квадратиками — на сайтах, в именах файлов, иногда в
-интерфейсах. Пока оставлены: «текст отображается» тоже относится к
-качеству жизни. Но это самый крупный одиночный пакет в системе, и решение
-стоит принимать осознанно.
+Fonts for Chinese, Japanese and Korean. Without them such text shows up as
+boxes - on websites, in file names, sometimes in interfaces. Kept for now:
+"text is displayed" counts as quality of life as well. But this is the single
+largest package in the system, and the decision is worth making deliberately.
 
-## Подпись пакетов: где на самом деле лежит связка ключей
+## Package signing: where the keyring actually lives
 
-Главный факт, из-за которого вся схема выглядит не так, как ожидаешь:
+The central fact, the one that makes the whole arrangement look unlike what you
+would expect:
 
 ```
 $ pacman --root /tmp/fakeroot -Qv
 Root      : /tmp/fakeroot/
 DB Path   : /tmp/fakeroot/var/lib/pacman/
-GPG Dir   : /etc/pacman.d/gnupg/      ← не /tmp/fakeroot/etc/...
+GPG Dir   : /etc/pacman.d/gnupg/      <- not /tmp/fakeroot/etc/...
 ```
 
-`--root` переносит всё, кроме каталога ключей. Значит, при установке
-подписи пакетов проверяются связкой **живой системы**, а не той, что
-создаётся на целевом диске. Отсюда два следствия:
+`--root` relocates everything except the keyring directory. That means that
+during an installation, package signatures are verified against the keyring of
+the **live system**, not against the one being created on the target disk. Two
+consequences follow:
 
-- `luna-keyring` обязан быть в `iso/packages.x86_64`. Без него живой
-  образ не знает ключа Luna, и установка падает на первом же пакете
-  `luna-*` — независимо от того, что лежит на целевом диске.
-- Связка на целевом диске нужна не для установки, а для того, что будет
-  после перезагрузки: обновления `pacman -Syu`.
+- `luna-keyring` has to be in `iso/packages.x86_64`. Without it the live image
+  does not know the Luna key, and the installation fails on the very first
+  `luna-*` package, no matter what is on the target disk.
+- The keyring on the target disk is not needed for the installation but for
+  what comes after the reboot: `pacman -Syu` updates.
 
-Связка живого образа появляется не при сборке. `mkarchiso` зовёт
-`pacstrap -G`, то есть каталог ключей в образ не попадает вовсе — это
-видно прямо в рабочем каталоге сборки:
+The live image's keyring does not come from the build. `mkarchiso` calls
+`pacstrap -G`, so the keyring directory never enters the image at all, which is
+visible right in the build's work directory:
 
 ```
 $ ls /var/luna/work/x86_64/airootfs/etc/pacman.d/
-hooks  mirrorlist          # gnupg отсутствует
+hooks  mirrorlist          # no gnupg
 ```
 
-Её создаёт при каждой загрузке `pacman-init.service` из профиля archiso:
-монтирует tmpfs на `/etc/pacman.d/gnupg`, затем `pacman-key --init` и
-`pacman-key --populate` без аргументов. Populate без аргументов берёт
-**все** связки из `/usr/share/pacman/keyrings/`, поэтому достаточно, чтобы
-пакет `luna-keyring` положил туда `luna.gpg` и `luna-trusted` — включать
-его отдельно никуда не нужно.
+It is created on every boot by `pacman-init.service` from the archiso profile:
+it mounts a tmpfs on `/etc/pacman.d/gnupg`, then runs `pacman-key --init` and
+`pacman-key --populate` with no arguments. Populate with no arguments takes
+**every** keyring from `/usr/share/pacman/keyrings/`, so it is enough for the
+`luna-keyring` package to put `luna.gpg` and `luna-trusted` there; nothing has
+to be enabled separately.
 
-### pacstrap -K не наполняет связку, а только создаёт её
+### pacstrap -K creates the keyring but does not populate it
 
 ```
 if (( initkeyring )); then
     pacman-key --gpgdir "$newroot/$gpg_dir" --init
 ```
 
-Никакого `--populate` рядом нет, и в `pacman-key` его тоже нет внутри
-`--init`. Наполняет связку целевой системы скриптлет пакета-связки, уже
-внутри chroot.
+There is no `--populate` next to it, and `pacman-key` does not do one inside
+`--init` either. What fills the target system's keyring is the keyring
+package's scriptlet, already inside the chroot.
 
-### Пакет-связка обязан зависеть от pacman
+### The keyring package has to depend on pacman
 
-Скриптлет `luna-keyring` зовёт `pacman-key`. Порядок установки внутри
-одной транзакции определяется зависимостями, и пакет без зависимостей
-может оказаться установлен раньше самого `pacman` — тогда скриптлет тихо
-ничего не сделает, а проверка `if pacman-key -l` это скроет. Поэтому
-`depends=('pacman')`. Для надёжности установщик после `pacstrap` ещё раз
-зовёт `pacman-key --populate luna` в chroot: операция идемпотентна.
+The `luna-keyring` scriptlet calls `pacman-key`. The install order within a
+single transaction is decided by dependencies, and a package that depends on
+nothing may end up installed before `pacman` itself - in which case the
+scriptlet quietly does nothing and the `if pacman-key -l` guard hides that.
+Hence `depends=('pacman')`. For good measure the installer calls
+`pacman-key --populate luna` in the chroot once more after `pacstrap`: the
+operation is idempotent.
 
-### repo-add без --include-sigs не пишет подпись в базу
+### repo-add without --include-sigs does not write the signature into the database
 
-Подписать пакеты мало. Первая сборка дала шесть файлов `.sig` — и ноль
-полей `%PGPSIG%` в базе:
+Signing the packages is not enough. The first build produced six `.sig` files
+and zero `%PGPSIG%` fields in the database:
 
 ```
-==> Пакетов в базе: 6
-==> Из них с подписью в базе: 0
+==> Packages in the database: 6
+==> Of those, signed in the database: 0
 ```
 
-Поле добавляется только с флагом `--include-sigs`. Без него pacman ищет
-файл `.sig` рядом с пакетом на сервере, и схема работает, пока эти файлы
-не потеряются при копировании репозитория — а копируется он у нас дважды,
-в образ и на целевой диск. Подпись внутри базы такой потери не боится.
-Сборка теперь сама сверяет число пакетов с числом `%PGPSIG%` и падает при
-расхождении.
+The field is only added with the `--include-sigs` flag. Without it pacman looks
+for a `.sig` file next to the package on the server, and the arrangement works
+right up until those files are lost while the repository is copied around - and
+ours is copied twice, onto the image and onto the target disk. A signature
+inside the database does not fear that loss. The build now compares the number
+of packages against the number of `%PGPSIG%` fields itself and fails on a
+mismatch.
 
-### Сама база не подписывается — и это не забывчивость
+### The database itself is not signed, and that is not an oversight
 
-Первая попытка подписывала и базу тоже (`repo-add -s`). Сборка образа
-начала выдавать:
+The first attempt signed the database as well (`repo-add -s`). The image build
+started emitting:
 
 ```
 warning: Public keyring not found; have you run 'pacman-key --init'?
@@ -621,80 +653,96 @@ error: luna: key "5F6AD9A1840D7E15D5A4B743C7EE1CD46EE15432" is unknown
 error: keyring is not writable
 ```
 
-Виноват завершающий шаг `mkarchiso`: он зовёт `pacman -Q --sysroot` по
-собранному образу, чтобы записать на ISO список пакетов. В отличие от
-`--root`, ключ `--sysroot` переносит и каталог ключей — а у образа своей
-связки нет, она создаётся только при загрузке. Список пакетов при этом
-получался целым, то есть ошибка была безвредной. Безвредная ошибка в логе
-сборки хуже полезной: к ней привыкают и перестают читать.
+The culprit is `mkarchiso`'s final step: it calls `pacman -Q --sysroot` against
+the built image in order to write the package list onto the ISO. Unlike
+`--root`, the `--sysroot` option relocates the keyring directory too - and the
+image has no keyring of its own, since it is created only at boot. The package
+list still came out intact, so the error was harmless. A harmless error in a
+build log is worse than a useful one: people get used to it and stop reading.
 
-Подпись базы здесь ничего не защищает. Каждый пакет в базе несёт
-собственную подпись (`%PGPSIG%`), подменить пакет чужим подпись базы не
-мешает и не помогает. Arch по этой же причине свои базы не подписывает.
-Убрано; когда появится сетевой репозиторий, вопрос стоит пересмотреть.
+A database signature protects nothing here. Every package in the database
+carries its own signature (`%PGPSIG%`), and a database signature neither helps
+nor hinders swapping a package for somebody else's. Arch does not sign its own
+databases for the same reason. Removed; when a network repository appears the
+question is worth revisiting.
 
-### Кэш pacman ломает пересборку пакета той же версии
+**One consequence to keep in mind.** Anyone who synced the repository while the
+database was still signed keeps a cached `luna.db.sig` in their `dbpath`. It no
+longer matches the rebuilt database, and pacman then rejects the whole
+repository:
 
-Сборка образа упала на ровном месте:
+```
+error: luna: signature from "Luna Linux <luna@localhost>" is invalid
+error: failed to synchronize all databases (invalid or corrupted database (PGP signature))
+```
+
+The cure is deleting that one stale file. A freshly installed system never sees
+this, because its dbpath starts empty - only a machine that was used during the
+intermediate state is affected.
+
+### pacman's cache breaks rebuilding a package at the same version
+
+An image build failed out of nowhere:
 
 ```
 error: luna-cli: signature from "Luna Linux <luna@localhost>" is invalid
 :: File /var/cache/pacman/pkg/luna-cli-0.1.0-1-any.pkg.tar.zst is corrupted
 ```
 
-Версия `0.1.0-1` при пересборке не меняется, а содержимое пакета меняется
-(хотя бы отметками времени). `mkarchiso` зовёт `pacstrap -c`, то есть с
-кэшем хоста, pacman находит там файл с нужным именем от прошлой сборки и
-сверяет его со свежей подписью. Пока пакеты не подписывались, расхождение
-никак не проявлялось.
+Rebuilding does not change the version `0.1.0-1`, but it does change the
+contents of the package (timestamps at the very least). `mkarchiso` calls
+`pacstrap -c`, that is, with the host's cache; pacman finds a file with the
+expected name there from the previous build and checks it against the fresh
+signature. While the packages were unsigned the discrepancy never showed.
 
-`build-pkgs.sh` теперь удаляет из `/var/cache/pacman/pkg` собранный пакет
-сразу после сборки. Тот же подвох испортил и ручную проверку подписи:
-неподписанный пакет «установился» только потому, что pacman взял из кэша
-копию от предыдущего, успешного прогона. Любая проверка подписи обязана
-задавать свой `--cachedir`.
+`build-pkgs.sh` now deletes the built package from `/var/cache/pacman/pkg`
+right after building it. The same trap spoiled a manual signature test as well:
+an unsigned package "installed" only because pacman had taken a copy from the
+cache, left there by the previous, successful run. Any signature test has to
+set its own `--cachedir`.
 
-### Сжатие образа: zstd для работы, xz для релиза
+### Image compression: zstd for working, xz for a release
 
-Размеры одного и того же содержимого (4.5 ГиБ до сжатия):
+The sizes of one and the same content (4.5 GiB before compression):
 
-| Сжатие | Размер ISO | Для чего |
+| Compression | ISO size | What for |
 |---|---|---|
-| zstd, уровень 3 | 2.48 ГиБ | отладка, сборка за минуты |
-| zstd, уровень 19 | 2.20 ГиБ | обычная сборка |
-| xz + фильтр BCJ x86 | 2.12 ГиБ | релиз |
+| zstd, level 3 | 2.48 GiB | debugging, a build in minutes |
+| zstd, level 19 | 2.20 GiB | an ordinary build |
+| xz + the x86 BCJ filter | 2.12 GiB | a release |
 
-Выигрыш xz над zstd-19 оказался всего 3.4% — заметно меньше ожидаемого, и
-одного его для лимита не хватило. Не хватило примерно 132 МБ, и нашлись
-они не в сжатии (см. следующий раздел).
+The gain of xz over zstd-19 turned out to be only 3.4%, noticeably less than
+expected, and on its own it was not enough for the limit. About 132 MB were
+still missing, and they were not found in compression (see the next section).
 
-Выбор не только про эстетику: файл в релизе GitHub обязан быть **меньше
-2 ГиБ**, и zstd в этот предел не укладывается. Переключается переменной
-`LUNA_COMP=xz`.
+The choice is not only about aesthetics: a file in a GitHub release has to be
+**under 2 GiB**, and zstd does not fit inside that. It is switched with the
+`LUNA_COMP=xz` variable.
 
-Сжать готовый ISO архиватором — не выход, и это измерено, а не
-предположено: WinRAR на максимальном уровне отыграл на куске образа
-**3.45%**, потому что внутри уже лежит сжатый squashfs. До лимита это не
-доводит, а загрузочность теряется совсем.
+Compressing the finished ISO with an archiver is not a way out, and that was
+measured rather than assumed: WinRAR at its maximum level gained **3.45%** on a
+slice of the image, because what is inside is already a compressed squashfs.
+That does not reach the limit, and bootability is lost entirely.
 
-### Как проверялось, что проверка не декорация
+### How it was checked that verification is not decoration
 
-Три первые попытки проверки оказались негодными, и это стоит записать —
-ошибки типовые:
+The first three attempts at a check turned out to be worthless, and that is
+worth writing down, because the mistakes are typical ones:
 
-1. **Общий кэш pacman.** Неподписанный пакет «установился», потому что
-   pacman взял из `/var/cache/pacman/pkg` копию, скачанную предыдущим,
-   успешным тестом, вместе с её подписью. Любой тест подписи обязан
-   задавать свой `--cachedir`.
-2. **grep по слову error.** В списке зависимостей есть `libgpg-error`,
-   и проверка «есть ли в выводе error» срабатывала всегда. Судить надо по
-   коду возврата.
-3. **Слишком грубая подделка.** Дописанные в конец пакета байты
-   отсекаются раньше проверки подписи — по размеру из базы. Это тоже
-   защита, но проверяет она не то.
+1. **The shared pacman cache.** An unsigned package "installed" because pacman
+   took a copy out of `/var/cache/pacman/pkg` that a previous, successful test
+   had downloaded, signature and all. Any signature test has to set its own
+   `--cachedir`.
+2. **grepping for the word error.** The dependency list contains
+   `libgpg-error`, so a check of "is there an error in the output" fired every
+   single time. The verdict has to come from the exit code.
+3. **Too crude a forgery.** Bytes appended to the end of a package are rejected
+   before the signature is ever checked, on the size recorded in the database.
+   That is a protection too, but it is not testing what we meant to test.
 
-Годный тест: настоящий пакет, настоящая отсоединённая подпись, но ключ
-чужой — тогда остановить установку может только проверка подписи.
+A sound test: a genuine package with a genuine detached signature, but made
+with somebody else's key - then the only thing that can stop the installation
+is signature verification.
 
 ```
 error: key "9F23B793E8460BEA" could not be looked up remotely
@@ -702,97 +750,103 @@ error: required key missing from keyring
 Errors occurred, no packages were upgraded.
 ```
 
-### Ключ
+### The key
 
-Без парольной фразы — иначе сборка спрашивала бы пароль на каждый из
-шести пакетов. Секретная часть живёт только в `~builder/.gnupg` на
-сборочной машине, в репозиторий не попадает никогда. Резервная копия —
-`E:\Luna-Linux-Keys\`, там же README с порядком восстановления. Копия
-проверена: импорт в пустую связку, подпись файла, успешная проверка.
+No passphrase, because otherwise the build would ask for a password once per
+package, six times over. The secret half lives only in `~builder/.gnupg` on the
+build machine and never enters the repository. The backup copy is in
+`E:\Luna-Linux-Keys\`, together with a README describing how to restore it. The
+copy has been verified: imported into an empty keyring, used to sign a file,
+and the signature checked out.
 
-Потеря ключа не чинится: новый ключ означает, что все уже установленные
-системы перестанут доверять обновлениям, пока на них вручную не обновят
-`luna-keyring`.
+Losing the key cannot be repaired: a new key means every already-installed
+system stops trusting updates until `luna-keyring` is updated on it by hand.
 
 
-## Четверть гигабайта лежала в дубле ядра
+## A quarter of a gigabyte was sitting in a duplicate kernel
 
-Образ на xz весил 2.12 ГиБ при том, что squashfs внутри — всего 1.62 ГиБ.
-Разница в полгигабайта нашлась так:
+The xz image weighed 2.12 GiB while the squashfs inside it was only 1.62 GiB.
+The half-gigabyte difference was found like this:
 
 ```
 $ xorriso -indev luna.iso -report_el_torito plain
-El Torito boot img : 1  BIOS ...      4 блоков
-El Torito boot img : 2  UEFI ... 133632 блоков     # 261 МиБ
+El Torito boot img : 1  BIOS ...      4 blocks
+El Torito boot img : 2  UEFI ... 133632 blocks     # 261 MiB
 ```
 
-Загрузочный FAT-образ для UEFI весил 261 МиБ. Причина видна прямо в
-`mkarchiso`: режим systemd-boot складывает в этот образ ядро, initramfs и
-микрокод —
+The bootable FAT image for UEFI weighed 261 MiB. The reason is visible right
+inside `mkarchiso`: the systemd-boot mode puts the kernel, the initramfs and
+the microcode into that image -
 
 ```bash
 efiboot_files=("${isofs_dir}/EFI/" "${isofs_dir}/loader/" ...
                "${boot_dir}/vmlinuz-"* "${boot_dir}/initramfs-"*".img" ...)
 ```
 
-— тогда как те же файлы уже лежат на ISO отдельно, в `/luna/boot/x86_64/`.
-Иначе нельзя: systemd-boot не умеет читать ISO9660 и видит только FAT.
+- while the very same files are already on the ISO separately, in
+`/luna/boot/x86_64/`. There is no other way: systemd-boot cannot read ISO9660
+and sees only FAT.
 
-Режим `uefi.grub` кладёт в FAT-образ один загрузчик:
+The `uefi.grub` mode puts a single bootloader into the FAT image:
 
 ```bash
 efiboot_files=("${isofs_dir}/EFI")
 ```
 
-GRUB читает ISO9660 сам, и ядро остаётся в образе в одном экземпляре.
+GRUB reads ISO9660 itself, and the kernel stays in the image in one copy.
 
-Это тот самый переход, который раньше был отменён — из-за того, что
-`mkarchiso` копирует из каталога `grub/` профиля только файлы `.cfg`, и
-фоновую картинку в меню положить нечем. Тогда за него нечем было платить.
-Теперь на другой чаше четверть гигабайта, и решение переворачивается.
-Полезный урок: отменённое решение стоит записывать вместе с причиной —
-причина может перестать перевешивать.
+This is the very switch that had been reverted earlier, because `mkarchiso`
+copies only `.cfg` files out of the profile's `grub/` directory and there is no
+way to put a background picture into the menu. Back then there was nothing to
+pay for it with. Now there is a quarter of a gigabyte on the other side of the
+scale, and the decision flips. A useful lesson: a reverted decision is worth
+recording together with its reason, because the reason can stop outweighing the
+alternative.
 
-Важно, что искать надо было именно **разницу** между размером ISO и
-размером squashfs. Пока смотришь на итоговую цифру, единственный
-очевидный кандидат на сокращение — содержимое системы, то есть шрифты CJK
-на 299 МиБ. Их бы и пришлось выбросить, хотя они тут вовсе ни при чём.
+What matters is that the thing to look for was the **difference** between the
+size of the ISO and the size of the squashfs. As long as you stare at the final
+number, the only obvious candidate for cutting is the content of the system,
+that is, the 299 MiB of CJK fonts. Those would have been thrown out, although
+they have nothing to do with it.
 
-## Два авто-установщика по одной виртуалке стирают таблицу разделов
+## Two automated installers on one VM wipe the partition table
 
-Установленная система не загрузилась:
+The installed system would not boot:
 
 ```
 BdsDxe: failed to load Boot0009 "Luna" from HD(1,GPT,...)/EFI/Luna/grubx64.efi: Not Found
 ```
 
-Диск при этом оказался устроен странно: обе копии GPT — и основная в
-секторе 0, и резервная в последнем секторе — полностью обнулены, а
-файловые системы целы. FAT на отметке 1 МиБ читается, btrfs дальше тоже
-на месте, 4.4 ГиБ данных записаны.
+The disk turned out to be in a strange state: both copies of the GPT, the
+primary one in sector 0 and the backup in the last sector, were completely
+zeroed, while the filesystems were intact. The FAT at the 1 MiB mark was
+readable, the btrfs further along was in place as well, and 4.4 GiB of data had
+been written.
 
-Такое сочетание даёт ровно одна команда — `sgdisk --zap-all`, первая
-строка `do_partition`. То есть установщик запустился **второй раз** и
-успел дойти до разметки диска, куда первый уже всё поставил. Это видно и
-на снимке экрана: рядом с окном «Installation complete» висит второе, с
-«Partitioning /dev/vda».
+Exactly one command produces that combination: `sgdisk --zap-all`, the first
+line of `do_partition`. In other words, the installer had started a **second
+time** and got as far as partitioning the disk the first one had just finished
+installing to. It is visible on the screenshot too: next to the "Installation
+complete" window hangs a second one saying "Partitioning /dev/vda".
 
-Виноват не дистрибутив, а стенд: `test-install-auto.sh` был запущен
-дважды по одной виртуалке. Первый прогон не дождался загрузки (образ на
-xz грузится дольше прежних 125 секунд), его нажатия ушли в пустоту, а
-потом частично дошли — и открыли второй установщик.
+The distribution is not to blame here, the test rig is:
+`test-install-auto.sh` had been started twice against the same VM. The first
+run did not wait long enough for the boot (an xz image takes longer than the
+previous 125 seconds), its keystrokes went nowhere, and then part of them
+arrived after all and opened a second installer.
 
-Починено двумя способами сразу:
+Fixed in two ways at once:
 
-- ожидание загрузки вынесено в переменную `BOOT_WAIT` со значением 210
-  секунд вместо зашитых 125;
-- скрипт берёт `flock` на `/var/luna/auto-install.lock` и отказывается
-  запускаться вторым.
+- the boot wait was moved into a `BOOT_WAIT` variable with a value of 210
+  seconds instead of the hard-coded 125;
+- the script takes a `flock` on `/var/luna/auto-install.lock` and refuses to
+  start as the second instance.
 
-Проверено прямо на работающем прогоне: второй запуск отвечает «Другой
-прогон уже идёт» и выходит с кодом 1.
+Verified on a live run: a second start answers "Another run is already in
+progress" and exits with code 1.
 
-Отдельно стоит запомнить сам способ разбора. Симптом «не загружается»
-ничего не объясняет. Объяснила картина повреждений: **что именно
-разрушено, а что уцелело**. Обнулённые обе копии GPT при живых файловых
-системах — это подпись конкретной команды, и она сразу назвала виновника.
+The method of diagnosis is worth remembering separately. The symptom, "it does
+not boot", explains nothing. What explained it was the pattern of the damage:
+**what exactly was destroyed and what survived**. Both copies of the GPT zeroed
+while the filesystems were alive is the signature of one specific command, and
+it named the culprit immediately.

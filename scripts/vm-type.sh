@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-# Набор текста и нажатие клавиш в работающей виртуалке через QMP.
-# Нужен, чтобы проверять TUI-установщик автоматически, не сидя за клавиатурой.
+# Types text and presses keys in a running VM through QMP.
+# It exists so the TUI installer can be exercised automatically, without
+# anyone sitting at the keyboard.
 #
-#   vm-type.sh 'findmnt /' ret          напечатать строку и нажать Enter
-#   vm-type.sh down down ret            только клавиши
-#   vm-type.sh ctrl+alt+f2              сочетание клавиш
+#   vm-type.sh 'findmnt /' ret          type a string and press Enter
+#   vm-type.sh down down ret            keys only
+#   vm-type.sh ctrl+alt+f2              a key combination
 #   vm-type.sh meta_l+ret               Super+Enter
 #
-# Аргумент считается клавишей, если он есть в списке известных
-# (ret, tab, esc, up, down, left, right, spc, backspace, f1..f12,
-# ctrl, alt, shift, meta_l) или содержит «+» — тогда это сочетание.
-# Всё остальное печатается посимвольно.
+# An argument is treated as a key if it appears in the list of known ones
+# (ret, tab, esc, up, down, left, right, spc, backspace, f1..f12, ctrl, alt,
+# shift, meta_l) or if it contains a "+", in which case it is a combination.
+# Everything else is typed character by character.
 set -euo pipefail
 
 QMP_SOCK=${QMP_SOCK:-/var/luna/qmp.sock}
-[[ -S "$QMP_SOCK" ]] || { printf 'QMP-сокет не найден: %s (виртуалка запущена?)\n' "$QMP_SOCK" >&2; exit 1; }
+[[ -S "$QMP_SOCK" ]] || { printf 'QMP socket not found: %s (is the VM running?)\n' "$QMP_SOCK" >&2; exit 1; }
 
 python3 - "$QMP_SOCK" "$@" <<'EOF'
 import json, socket, sys, time
@@ -28,7 +29,7 @@ KEYS = {"ret","tab","esc","spc","backspace","delete","up","down","left","right",
         "ctrl","alt","shift","meta_l","meta_r",
         *(f"f{i}" for i in range(1, 13))}
 
-# Символ -> (нужен ли shift, имя клавиши в терминах QEMU).
+# Character -> the key name in QEMU's terms; SHIFTED ones also need shift.
 PLAIN = {" ":"spc","-":"minus","=":"equal","[":"bracket_left","]":"bracket_right",
          ";":"semicolon","'":"apostrophe","`":"grave_accent","\\":"backslash",
          ",":"comma",".":"dot","/":"slash","\n":"ret","\t":"tab"}
@@ -46,7 +47,7 @@ def codes_for(ch):
         return [PLAIN[ch]]
     if ch in SHIFTED:
         return ["shift", SHIFTED[ch]]
-    raise SystemExit(f"не знаю, как набрать символ: {ch!r}")
+    raise SystemExit(f"do not know how to type the character: {ch!r}")
 
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 s.settimeout(15)
@@ -59,7 +60,7 @@ def call(cmd, **args):
     while True:
         line = f.readline()
         if not line:
-            raise RuntimeError("QMP закрыл соединение")
+            raise RuntimeError("QMP closed the connection")
         reply = json.loads(line)
         if "event" in reply:
             continue
@@ -69,19 +70,19 @@ def call(cmd, **args):
 
 def press(codes):
     call("send-key", keys=[{"type": "qcode", "data": c} for c in codes])
-    time.sleep(0.03)   # без паузы гость теряет часть нажатий
+    time.sleep(0.03)   # without a pause the guest drops some of the keystrokes
 
-f.readline()            # приветствие сервера
+f.readline()            # the server greeting
 call("qmp_capabilities")
 
 for item in items:
     if "+" in item and len(item) > 1:
-        # Сочетание: все клавиши нажимаются одновременно, как ctrl+alt+f2.
+        # A combination: every key is pressed at once, as in ctrl+alt+f2.
         press([p.strip() for p in item.split("+") if p.strip()])
     elif item in KEYS:
         press([item])
     else:
         for ch in item:
             press(codes_for(ch))
-print("ввод отправлен")
+print("input sent")
 EOF

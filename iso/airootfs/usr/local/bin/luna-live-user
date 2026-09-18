@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
-# Создаёт пользователя живого образа Luna.
+# Creates the user of the Luna live image.
 #
-# Делается явным сервисом, а не файлом в sysusers.d, по двум причинам:
-#   1. Пользователей при сборке образа создаёт pacman-хук, а оверлей airootfs
-#      копируется уже после установки пакетов — то есть наш файл хук не увидит.
-#   2. systemd-sysusers.service помечен ConditionNeedsUpdate=|/etc и при
-#      загрузке может не запуститься вовсе.
-# А без этого пользователя не будет рабочего стола: Hyprland отказывается
-# работать от root.
+# This is an explicit service rather than a file in sysusers.d, for two reasons:
+#   1. During an image build users are created by a pacman hook, and the
+#      airootfs overlay is copied only after the packages are installed, so the
+#      hook would never see our file.
+#   2. systemd-sysusers.service is marked ConditionNeedsUpdate=|/etc and may
+#      not run at boot at all.
+# Without this user there is no desktop: Hyprland refuses to run as root.
 set -euo pipefail
 
 USER_NAME=luna
-# uucp даёт доступ к /dev/ttyS0 — через него вывод команд можно поймать
-# на хосте (см. --serial в scripts/test-iso.sh). На живом образе это
-# удобно для отладки и ничем не грозит.
+# uucp grants access to /dev/ttyS0, which is how command output can be caught
+# on the host (see --serial in scripts/test-iso.sh). On a live image that is
+# convenient for debugging and harmless.
 USER_GROUPS=wheel,video,input,audio,storage,optical,uucp
 
 if ! id -u "$USER_NAME" >/dev/null 2>&1; then
   useradd -m -G "$USER_GROUPS" -s /usr/bin/fish -c "Luna Live" "$USER_NAME"
-  # Живой образ — пароля нет. На установленной системе пароль задаёт установщик.
+  # A live image has no password. On an installed system the installer sets one.
   passwd -d "$USER_NAME" >/dev/null
 fi
 
-# useradd копирует /etc/skel сам, но если домашний каталог уже был создан
-# раньше (например, повторный запуск), конфиги могли не попасть.
+# useradd copies /etc/skel by itself, but if the home directory already existed
+# (on a repeated run, for instance) the configs may not have made it there.
 if [[ ! -e /home/$USER_NAME/.config/hypr/hyprland.lua ]]; then
   cp -rT /etc/skel "/home/$USER_NAME"
   chown -R "$USER_NAME:$USER_NAME" "/home/$USER_NAME"

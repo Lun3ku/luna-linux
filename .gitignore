@@ -1,5 +1,5 @@
-# Собранные пакеты и репозиторий — это результат сборки, а не исходник.
-# Настоящий репозиторий живёт на ext4 в /var/luna/repo внутри LunaBuild.
+# Built packages and the repository are build output, not sources.
+# The real repository lives on ext4 in /var/luna/repo inside LunaBuild.
 repo/
 *.pkg.tar.zst
 *.pkg.tar.zst.sig
@@ -10,25 +10,25 @@ repo/
 *.files
 *.files.tar.gz
 
-# Каталоги, которые создаёт makepkg при сборке.
+# Directories makepkg creates while building.
 pkg/*/src/
 pkg/*/pkg/
 pkg/*/*.log
 
-# Образы.
+# Images.
 *.iso
 
-# СЕКРЕТНЫЕ КЛЮЧИ. В репозитории им не место никогда.
-# Секретная часть ключа подписи живёт только в ~builder/.gnupg на
-# сборочном хосте. Здесь лежит и должна лежать лишь публичная часть
-# (pkg/luna-keyring/luna.gpg) и отпечаток (luna-trusted).
+# SECRET KEYS. They never belong in the repository.
+# The secret half of the signing key lives only in ~builder/.gnupg on the
+# build host. What belongs here, and all that belongs here, is the public
+# half (pkg/luna-keyring/luna.gpg) and the fingerprint (luna-trusted).
 *.gnupg/
 secring*
 *.key
 *private*.asc
 *secret*.asc
 
-# Мусор операционных систем.
+# Operating system litter.
 Thumbs.db
 desktop.ini
 .DS_Store

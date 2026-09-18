@@ -1,45 +1,46 @@
 #!/usr/bin/env bash
-# Автоматический прогон установщика с ответами по умолчанию.
+# Walks through the installer automatically, taking the default answers.
 #
-# Регрессионный тест: проверяет, что установка проходит целиком, не требуя
-# сидеть за клавиатурой. Порядок нажатий соответствует текущим экранам
-# установщика — добавишь или уберёшь экран, поправь и здесь.
+# A regression test: it checks that an installation completes from end to end
+# without anyone sitting at the keyboard. The order of keystrokes matches the
+# installer's current screens, so adding or removing a screen means fixing this
+# file too.
 #
-# Запускать ПОСЛЕ старта виртуалки с чистым диском:
+# Run it AFTER starting the VM with a clean disk:
 #     rm -f /var/luna/test-disk.qcow2
-#     scripts/test-iso.sh --install --vnc     (в одном процессе)
-#     scripts/test-install-auto.sh            (в другом)
+#     scripts/test-iso.sh --install --vnc     (in one process)
+#     scripts/test-install-auto.sh            (in another)
 set -uo pipefail
 
-# Замок. Два экземпляра этого скрипта, работающие по одной виртуалке,
-# наносят настоящий вред: нажатия перемешиваются, и может запуститься
-# второй установщик. Он дойдёт до "sgdisk --zap-all" по диску, куда
-# первый уже всё установил, и сотрёт обе копии таблицы разделов. Система
-# при этом останется на диске целиком — не загрузится только она.
+# The lock. Two copies of this script driving the same VM do real damage: the
+# keystrokes interleave and a second installer can start. That one reaches
+# "sgdisk --zap-all" on the disk the first one has just finished installing to,
+# and wipes both copies of the partition table. The system stays on the disk
+# in full; the only thing it will not do is boot.
 LOCK=/var/luna/auto-install.lock
 exec 9>"$LOCK"
-flock -n 9 || { echo "Другой прогон уже идёт ($LOCK). Выход." >&2; exit 1; }
+flock -n 9 || { echo "Another run is already in progress ($LOCK). Exiting." >&2; exit 1; }
 
 L='/mnt/c/Users/anyah/Documents/Claudes work/luna/scripts'
 SHOT=${SHOT:-/var/luna}
 t() { bash "$L/vm-type.sh" "$@" >/dev/null; sleep "${DELAY:-3}"; }
 
-# Ожидание вынесено в переменную: на xz-образе распаковка squashfs идёт
-# заметно дольше, чем на zstd, и прежних 125 секунд перестало хватать —
-# нажатия уходили в ещё не загрузившуюся систему.
-echo "== жду загрузку живого образа (${BOOT_WAIT:-210} с) =="
+# The wait is a variable because an xz image decompresses its squashfs
+# noticeably more slowly than a zstd one, and the previous 125 seconds stopped
+# being enough: the keystrokes went into a system that had not booted yet.
+echo "== waiting for the live image to boot (${BOOT_WAIT:-210} s) =="
 sleep "${BOOT_WAIT:-210}"
 
-echo "== открываю терминал и запускаю установщик =="
+echo "== opening a terminal and starting the installer =="
 t meta_l+ret
 sleep 8
 t 'sudo luna-install' ret
 sleep 8
 
-echo "== прохожу экраны =="
+echo "== walking through the screens =="
 t ret                 # Welcome -> Continue
 t ret                 # Keymap  -> us
-t ret                 # Region  -> UTC (первый пункт, экран города пропускается)
+t ret                 # Region  -> UTC (first entry, the city screen is skipped)
 t ret                 # Disk    -> /dev/vda
 t ret                 # Scheme  -> auto
 t left ret            # Confirm erase -> Erase
@@ -52,7 +53,7 @@ t ret                 # Profile -> desktop
 bash "$L/vm-screenshot.sh" "$SHOT/auto-summary.png" >/dev/null
 t left ret            # Summary -> Install
 
-echo "== установка пошла, жду =="
+echo "== the installation has started, waiting =="
 for i in $(seq 1 40); do
     sleep 30
     bash "$L/vm-screenshot.sh" "$SHOT/auto-progress.png" >/dev/null 2>&1 || true

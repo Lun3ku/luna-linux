@@ -2,15 +2,15 @@
 pkgname=luna-desktop
 pkgver=0.1.0
 pkgrel=1
-pkgdesc="Рабочий стол Luna Linux на Hyprland с готовыми настройками"
+pkgdesc="The Luna Linux Hyprland desktop with ready-made settings"
 arch=('any')
 url="https://github.com/luna-linux"
 license=('GPL-3.0-or-later')
 
 depends=($(grep -vE '^[[:space:]]*(#|$)' "$startdir/depends.txt" | awk '{print $1}'))
 
-# Конфиг экрана входа лежит в /etc и его правят руками — помечаем как
-# backup, иначе обновление пакета затрёт изменения.
+# The login screen config lives in /etc and gets edited by hand, so it is
+# marked as backup; otherwise a package update would wipe the changes.
 backup=('etc/greetd/luna.toml')
 
 source=('hyprland.lua'
@@ -34,8 +34,8 @@ sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
             'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
-  # Конфиги пользователя — в /etc/skel. Новый пользователь получает копию,
-  # дальше файлы его собственные и обновление пакета их не перезапишет.
+  # User configs go into /etc/skel. A new user receives a copy, after which the
+  # files are theirs and a package update will not overwrite them.
   local skel="$pkgdir/etc/skel/.config"
 
   install -Dm644 "$srcdir/hyprland.lua"  "$skel/hypr/hyprland.lua"
@@ -51,29 +51,28 @@ package() {
 
   install -Dm644 "$srcdir/luna.png" "$pkgdir/usr/share/backgrounds/luna/luna.png"
 
-  # Обои: скрипт и юнит. Путь к картинке можно переопределить файлом
-  # ~/.config/luna/wallpaper, см. сам скрипт.
+  # The wallpaper: a script and a unit. The path to the image can be overridden
+  # by ~/.config/luna/wallpaper, see the script itself.
   install -Dm755 "$srcdir/luna-wallpaper" "$pkgdir/usr/bin/luna-wallpaper"
-  # Запуск сеанса всегда через uwsm — см. комментарий в самом скрипте.
+  # A session is always started through uwsm - see the comment in the script.
   install -Dm755 "$srcdir/luna-session" "$pkgdir/usr/bin/luna-session"
   install -Dm644 "$srcdir/luna-wallpaper.service"     "$pkgdir/usr/lib/systemd/user/luna-wallpaper.service"
 
-  # Пресеты: системный включает экран входа, пользовательский — панель и
-  # прочие юниты сеанса.
+  # The presets: the system one enables the login screen, the user one the
+  # panel and the other session units.
   install -Dm644 "$srcdir/90-luna-desktop.preset" \
     "$pkgdir/usr/lib/systemd/system-preset/90-luna-desktop.preset"
   install -Dm644 "$srcdir/90-luna-user.preset" \
     "$pkgdir/usr/lib/systemd/user-preset/90-luna-user.preset"
 
-  # Экран входа: свой конфиг плюс drop-in, показывающий на него greetd.
+  # The login screen: our own config plus a drop-in that points greetd at it.
   install -Dm644 "$srcdir/greetd-luna.toml" "$pkgdir/etc/greetd/luna.toml"
   install -Dm644 "$srcdir/greetd-override.conf" \
     "$pkgdir/usr/lib/systemd/system/greetd.service.d/10-luna.conf"
 
-  # Пресет пользователя применяется только командой systemctl --user
-  # preset-all, которую никто не обязан выполнять. Поэтому дополнительно
-  # кладём симлинки: systemd читает .wants и из /usr/lib, так набор
-  # работает сразу и у каждого пользователя.
+  # A user preset is applied only by systemctl --user preset-all, which nobody
+  # is obliged to run. So symlinks are shipped as well: systemd reads .wants
+  # from /usr/lib too, which makes the set work immediately and for every user.
   local wants="$pkgdir/usr/lib/systemd/user/graphical-session.target.wants"
   install -d "$wants"
   local unit

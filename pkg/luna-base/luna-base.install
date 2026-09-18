@@ -1,6 +1,6 @@
-# Тему загрузочной заставки назначаем штатной утилитой, а не подменой
-# /etc/plymouth/plymouthd.conf: тот файл принадлежит пакету plymouth,
-# а plymouth-set-default-theme сам знает, куда писать.
+# The boot splash theme is selected with the supported tool rather than by
+# overwriting /etc/plymouth/plymouthd.conf: that file belongs to the plymouth
+# package, and plymouth-set-default-theme knows where to write by itself.
 
 _set_plymouth_theme() {
   if command -v plymouth-set-default-theme >/dev/null 2>&1; then
@@ -12,14 +12,14 @@ post_install() {
   _set_plymouth_theme
   cat <<'MSG'
 
-Luna Linux: базовые настройки установлены.
+Luna Linux: the base settings are installed.
 
-Чтобы применить дефолтный набор сервисов (systemd-oomd, снапшоты btrfs,
-обслуживание зеркал и кэша пакетов), выполните:
+To apply the default set of services (systemd-oomd, btrfs snapshots, mirror
+and package cache maintenance), run:
 
     systemctl preset-all
 
-В устанавливаемой системе это делает установщик автоматически.
+On a system being installed, the installer does this automatically.
 
 MSG
 }
@@ -29,8 +29,8 @@ post_upgrade() {
 }
 
 pre_remove() {
-  # Возвращаем штатную тему, иначе plymouth останется ссылаться на
-  # каталог, который вот-вот исчезнет, и initramfs не соберётся.
+  # Restore the stock theme, otherwise plymouth keeps pointing at a directory
+  # that is about to disappear and the initramfs fails to build.
   if command -v plymouth-set-default-theme >/dev/null 2>&1; then
     plymouth-set-default-theme bgrt >/dev/null 2>&1 || true
   fi

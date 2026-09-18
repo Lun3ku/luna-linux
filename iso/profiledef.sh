@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
-# Профиль сборки Luna Linux. %INSTALL_DIR%, %ARCH% и %ARCHISO_UUID% в конфигах
-# загрузчиков подставляет сам mkarchiso, поэтому install_dir и метку можно
-# менять здесь, не трогая syslinux/grub/efiboot.
+# The Luna Linux build profile. mkarchiso substitutes %INSTALL_DIR%, %ARCH% and
+# %ARCHISO_UUID% inside the bootloader configs itself, so install_dir and the
+# label can be changed here without touching syslinux/grub/efiboot.
 
 iso_name="luna"
 iso_label="LUNA_$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y%m)"
@@ -11,40 +11,43 @@ iso_application="Luna Linux Live/Install Medium"
 iso_version="$(date --date="@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y.%m.%d)"
 install_dir="luna"
 buildmodes=('iso')
-# UEFI-меню рисует GRUB, и причина этому не вкусовая, а весовая.
+# The UEFI menu is drawn by GRUB, and the reason is weight rather than taste.
 #
-# systemd-boot не умеет читать ISO9660 и требует, чтобы ядро с initramfs
-# лежали внутри загрузочного FAT-образа. А они и так лежат на самом ISO —
-# то есть попадают в образ дважды. Измерено на собранном ISO:
+# systemd-boot cannot read ISO9660 and requires the kernel and the initramfs to
+# live inside the bootable FAT image. They already live on the ISO itself, so
+# they end up in the image twice. Measured on a finished ISO:
 #
-#   El Torito boot img : 2  UEFI ... 133632 блоков  = 261 МиБ
+#   El Torito boot img : 2  UEFI ... 133632 blocks  = 261 MiB
 #
-# GRUB читает ISO9660 сам, поэтому в FAT-образ идёт только загрузчик, а
-# ядро берётся с диска в одном экземпляре. Разница около 260 МиБ — как раз
-# она решает, помещается ли релиз в лимит GitHub (2 ГиБ на файл).
+# GRUB reads ISO9660 by itself, so only the bootloader goes into the FAT image
+# and the kernel is stored once. The difference is around 260 MiB, and that is
+# exactly what decides whether a release fits GitHub's limit (2 GiB per file).
 #
-# Цена: фоновую картинку в меню GRUB штатными средствами не положить —
-# mkarchiso копирует из каталога grub профиля только файлы .cfg. Ради
-# картинки мы этот переход когда-то откатили; ради четверти гигабайта он
-# оправдан. Заставка splash.png при загрузке с BIOS работает как прежде.
+# The price: a background image cannot be placed into the GRUB menu by
+# supported means, because mkarchiso copies only .cfg files out of the
+# profile's grub directory. We once reverted this switch for the sake of that
+# picture; for the sake of a quarter of a gigabyte it is worth it. The
+# splash.png shown when booting from BIOS still works as before.
 bootmodes=('bios.syslinux'
            'uefi.grub')
 pacman_conf="pacman.conf"
 airootfs_image_type="squashfs"
 
-# Сжатие переключается переменной, потому что у сборки два разных смысла.
+# Compression is switched by a variable, because a build serves two different
+# purposes.
 #
-#   LUNA_COMP=zstd  (по умолчанию) — для работы. Жмёт почти как xz, но
-#                   распаковывается на живой системе заметно быстрее, а
-#                   собирается в разы быстрее. LUNA_COMP_LEVEL=3 — для отладки.
-#   LUNA_COMP=xz    — для релиза. Образ меньше примерно на десятую часть
-#                   ценой долгой сборки. Это оправдано там, где образ
-#                   собирают один раз, а скачивают много. Заодно так делает
-#                   сам releng. Фильтр x86 BCJ добавляет ещё пару процентов
-#                   на исполняемых файлах.
+#   LUNA_COMP=zstd  (the default) is for working. It compresses almost as well
+#                   as xz, decompresses noticeably faster on the live system
+#                   and builds many times faster. LUNA_COMP_LEVEL=3 is for
+#                   debugging.
+#   LUNA_COMP=xz    is for a release. The image is roughly a tenth smaller at
+#                   the cost of a long build. That pays off where an image is
+#                   built once and downloaded many times. It is also what
+#                   releng itself does. The x86 BCJ filter adds a couple more
+#                   percent on executables.
 #
-# Размер имеет и внешнее ограничение: файл в релизе GitHub обязан быть
-# меньше 2 ГиБ, а на zstd образ в этот предел не помещается.
+# Size also has an external constraint: a file in a GitHub release has to be
+# under 2 GiB, and with zstd the image does not fit within that limit.
 if [[ "${LUNA_COMP:-zstd}" == xz ]]; then
   airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'x86' '-b' '1M')
 else
@@ -61,6 +64,6 @@ file_permissions=(
   ["/usr/local/bin/Installation_guide"]="0:0:755"
   ["/usr/local/bin/livecd-sound"]="0:0:755"
   ["/usr/local/bin/luna-live-user"]="0:0:755"
-  # sudo молча игнорирует файл с правами шире 0440.
+  # sudo silently ignores a file whose permissions are wider than 0440.
   ["/etc/sudoers.d/10-luna-live"]="0:0:440"
 )

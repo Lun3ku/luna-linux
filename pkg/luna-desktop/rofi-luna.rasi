@@ -1,5 +1,5 @@
-/* Меню Luna Linux. Используется и как лончер (Super+R), и как
- * переключатель окон (Super+Tab), и как история буфера (Super+Shift+V). */
+/* The Luna Linux menu. Used as the launcher (Super+R), as the window
+ * switcher (Super+Tab) and as the clipboard history (Super+Shift+V). */
 
 * {
     base:     #12111a;

@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Создаёт ключ, которым подписываются пакеты Luna.
+# Creates the key the Luna packages are signed with.
 #
-# Запускать один раз. Повторный запуск ничего не портит: если ключ уже
-# есть, скрипт только переэкспортирует публичную часть.
+# Run once. Running it again breaks nothing: if the key already exists, the
+# script only re-exports the public half.
 #
-# ГДЕ ЖИВЁТ СЕКРЕТНАЯ ЧАСТЬ. Только в связке ключей пользователя builder
-# на сборочном хосте (~builder/.gnupg). В репозиторий она не попадает и
-# попасть не должна — там лежит лишь публичная часть и отпечаток.
+# WHERE THE SECRET HALF LIVES. Only in the keyring of the builder user on the
+# build host (~builder/.gnupg). It does not go into the repository and must
+# never do so; what lives there is the public half and the fingerprint.
 #
-# ПРО ОТСУТСТВИЕ ПАРОЛЯ. Ключ без парольной фразы: сборка пакетов должна
-# идти без запроса пароля на каждый пакет. Для локального ключа личного
-# дистрибутива это разумный размен — тот, кто получил доступ к сборочной
-# машине, всё равно может подменить сами пакеты до подписи. Если Luna
-# когда-нибудь станет публичной, ключ надо переделать с паролем и держать
-# подпись отдельно от сборки.
+# ABOUT THE MISSING PASSPHRASE. The key has none, because building packages
+# must not stop to ask for a password once per package. For a local key of a
+# personal distribution that is a reasonable trade: whoever gains access to the
+# build machine can tamper with the packages before they are signed anyway. If
+# Luna ever becomes public, the key should be remade with a passphrase and the
+# signing kept apart from the building.
 set -euo pipefail
 
 LUNA_SRC=${LUNA_SRC:-/mnt/c/Users/anyah/Documents/Claudes work/luna}
@@ -24,14 +24,14 @@ UID_MAIL="luna@localhost"
 msg() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m!!!\033[0m %s\n' "$*" >&2; exit 1; }
 
-[[ $EUID -eq 0 ]] || die "Запускать от root: wsl -d LunaBuild -u root"
-id -u builder >/dev/null 2>&1 || die "Нет пользователя builder — запусти scripts/bootstrap-host.sh"
+[[ $EUID -eq 0 ]] || die "Run as root: wsl -d LunaBuild -u root"
+id -u builder >/dev/null 2>&1 || die "No builder user - run scripts/bootstrap-host.sh"
 
 as_builder() { sudo -u builder "$@"; }
 
 if ! as_builder gpg --list-secret-keys "$UID_MAIL" >/dev/null 2>&1; then
-    msg "Создаю ключ подписи $UID_NAME <$UID_MAIL>"
-    # %no-protection — без парольной фразы, см. комментарий выше.
+    msg "Creating signing key $UID_NAME <$UID_MAIL>"
+    # %no-protection means no passphrase, see the comment above.
     as_builder gpg --batch --gen-key <<GPGEOF
 %no-protection
 Key-Type: RSA
@@ -43,28 +43,28 @@ Expire-Date: 0
 %commit
 GPGEOF
 else
-    msg "Ключ уже существует, только переэкспортирую публичную часть"
+    msg "The key already exists, only re-exporting the public half"
 fi
 
 FPR=$(as_builder gpg --with-colons --fingerprint "$UID_MAIL" \
       | awk -F: '/^fpr:/ {print $10; exit}')
-[[ -n $FPR ]] || die "Не удалось получить отпечаток ключа"
+[[ -n $FPR ]] || die "Could not read the key fingerprint"
 
-msg "Отпечаток: $FPR"
+msg "Fingerprint: $FPR"
 
 install -d "$KEYRING_DIR"
 as_builder gpg --export "$UID_MAIL" > "$KEYRING_DIR/luna.gpg"
 
-# Формат тот же, что у archlinux-trusted: отпечаток, уровень доверия, двоеточие.
-# Уровень 4 — полное доверие.
+# Same format as archlinux-trusted: fingerprint, trust level, colon.
+# Level 4 means full trust.
 printf '%s:4:\n' "$FPR" > "$KEYRING_DIR/luna-trusted"
 
-msg "Публичная часть выгружена в pkg/luna-keyring/"
+msg "Public half exported into pkg/luna-keyring/"
 ls -l "$KEYRING_DIR/luna.gpg" "$KEYRING_DIR/luna-trusted"
 
-# Сборочный хост должен доверять ключу: иначе mkarchiso не сможет
-# поставить подписанные пакеты luna-* в образ.
-msg "Регистрирую ключ в связке pacman сборочного хоста"
+# The build host has to trust the key, otherwise mkarchiso cannot install the
+# signed luna-* packages into the image.
+msg "Registering the key in the build host's pacman keyring"
 pacman-key --add "$KEYRING_DIR/luna.gpg" >/dev/null
 pacman-key --lsign-key "$FPR" >/dev/null 2>&1
-msg "Готово"
+msg "Done"

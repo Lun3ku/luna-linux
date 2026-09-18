@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Собирает пакеты luna-* и обновляет локальный репозиторий pacman.
-# Запускать от root внутри LunaBuild.
+# Builds the luna-* packages and updates the local pacman repository.
+# Run as root inside LunaBuild.
 #
-#   build-pkgs.sh              собрать все пакеты
-#   build-pkgs.sh luna-base    собрать только указанные
+#   build-pkgs.sh              build every package
+#   build-pkgs.sh luna-base    build only the ones named
 #
-# Все пакеты подписываются ключом Luna, база репозитория — тоже. Ключ
-# создаёт scripts/make-signing-key.sh, его секретная часть живёт только в
-# ~builder/.gnupg на этой машине; резервная копия — E:\Luna-Linux-Keys.
+# Every package is signed with the Luna key. The key is created by
+# scripts/make-signing-key.sh; its secret half lives only in ~builder/.gnupg
+# on this machine, and the backup copy is in E:\Luna-Linux-Keys.
 set -euo pipefail
 
 LUNA_SRC=${LUNA_SRC:-/mnt/c/Users/anyah/Documents/Claudes work/luna}
@@ -20,114 +20,121 @@ KEYRING_DIR="$LUNA_SRC/pkg/luna-keyring"
 msg() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m!!!\033[0m %s\n' "$*" >&2; exit 1; }
 
-[[ $EUID -eq 0 ]] || die "Запускать от root: wsl -d LunaBuild -u root"
-id -u builder >/dev/null 2>&1 || die "Нет пользователя builder — запусти scripts/bootstrap-host.sh"
+[[ $EUID -eq 0 ]] || die "Run as root: wsl -d LunaBuild -u root"
+id -u builder >/dev/null 2>&1 || die "No builder user - run scripts/bootstrap-host.sh"
 
-# --- ключ подписи -----------------------------------------------------------
-# Отпечаток берём из того же файла, который уезжает в пакет luna-keyring:
-# так подпись и доверие к ней не могут разъехаться между собой.
-[[ -f "$KEYRING_DIR/luna-trusted" ]] || die "Нет $KEYRING_DIR/luna-trusted — запусти scripts/make-signing-key.sh"
+# --- the signing key --------------------------------------------------------
+# The fingerprint is read from the very file that ships in the luna-keyring
+# package, so the signature and the trust placed in it cannot drift apart.
+[[ -f "$KEYRING_DIR/luna-trusted" ]] || die "No $KEYRING_DIR/luna-trusted - run scripts/make-signing-key.sh"
 FPR=$(cut -d: -f1 "$KEYRING_DIR/luna-trusted")
-[[ -n $FPR ]] || die "Пустой отпечаток в luna-trusted"
+[[ -n $FPR ]] || die "Empty fingerprint in luna-trusted"
 
 sudo -u builder gpg --list-secret-keys "$FPR" >/dev/null 2>&1 \
-  || die "У builder нет секретного ключа $FPR.
-       Создать новый:      scripts/make-signing-key.sh
-       Восстановить копию: sudo -u builder gpg --import /mnt/e/Luna-Linux-Keys/luna-signing-SECRET.asc"
+  || die "builder has no secret key $FPR.
+       Create a new one:     scripts/make-signing-key.sh
+       Restore the backup:   sudo -u builder gpg --import /mnt/e/Luna-Linux-Keys/luna-signing-SECRET.asc"
 
-# Сборочный хост должен доверять ключу сам: mkarchiso ставит наши пакеты в
-# образ обычным pacman, а тот теперь проверяет подписи по-настоящему.
+# The build host has to trust the key itself: mkarchiso installs our packages
+# into the image with ordinary pacman, and pacman now verifies signatures for
+# real.
 if ! pacman-key --list-keys "$FPR" >/dev/null 2>&1; then
-  msg "Регистрирую ключ в связке pacman сборочного хоста"
+  msg "Registering the key in the build host's pacman keyring"
   pacman-key --add "$KEYRING_DIR/luna.gpg" >/dev/null
   pacman-key --lsign-key "$FPR" >/dev/null 2>&1
 fi
 
-msg "Подписываю ключом $FPR"
+msg "Signing with key $FPR"
 
 names=("$@")
 if [[ ${#names[@]} -eq 0 ]]; then
   mapfile -t names < <(cd "$LUNA_SRC/pkg" && ls -1d */ | tr -d '/')
 fi
 
-# Репозиторий держим за builder: repo-add подписывает базу, а ключ есть
-# только у него. Root всё равно может писать сюда при необходимости.
+# The repository is owned by builder because repo-add runs as builder. Root can
+# still write here whenever it needs to.
 install -d -o builder -g builder "$BUILD" "$REPO"
 chown -R builder:builder "$REPO"
 
 for name in "${names[@]}"; do
   src="$LUNA_SRC/pkg/$name"
-  [[ -f "$src/PKGBUILD" ]] || die "Нет PKGBUILD: $src"
+  [[ -f "$src/PKGBUILD" ]] || die "No PKGBUILD: $src"
 
-  msg "Собираю $name"
-  # Собираем на ext4: makepkg ставит права на файлы, а на DrvFs их нет.
+  msg "Building $name"
+  # Build on ext4: makepkg sets file permissions, and DrvFs has none.
   rm -rf "$BUILD/$name"
   install -d "$BUILD/$name"
   cp -rT "$src" "$BUILD/$name"
   chown -R builder:builder "$BUILD/$name"
 
-  # -d (--nodeps): зависимости наших пакетов — это то, что нужно
-  # установленной системе, а не сборочному хосту. Без этого флага makepkg
-  # попытался бы притащить сюда весь Hyprland.
-  # --sign --key: подпись кладётся рядом файлом .sig; ключ без парольной
-  # фразы, поэтому сборка не останавливается на вопросе.
+  # -d (--nodeps): the dependencies of our packages are what the installed
+  # system needs, not what the build host needs. Without this flag makepkg
+  # would try to drag the whole of Hyprland in here.
+  # --sign --key: the signature is written next to the package as a .sig file.
+  # The key has no passphrase, so the build never stops to ask.
   sudo -u builder env -C "$BUILD/$name" makepkg -f -d --noconfirm --clean --sign --key "$FPR"
 
   built=$(find "$BUILD/$name" -maxdepth 1 -name '*.pkg.tar.*' ! -name '*.sig' -printf '%p\n' | head -n1)
-  [[ -n "$built" ]] || die "$name: пакет не собрался"
-  [[ -f "$built.sig" ]] || die "$name: пакет собрался без подписи"
+  [[ -n "$built" ]] || die "$name: the package did not build"
+  [[ -f "$built.sig" ]] || die "$name: the package built without a signature"
 
-  # Старые версии этого же пакета убираем: иначе в каталоге копится хлам,
-  # а вместе с ним и подписи, к которым уже нет записи в базе.
+  # Older versions of this same package are removed: otherwise the directory
+  # collects junk, and with it signatures that no longer have an entry in the
+  # database.
   find "$REPO" -maxdepth 1 -name "$name-[0-9]*.pkg.tar.*" -delete
 
   install -o builder -g builder -m644 "$built"     "$REPO/"
   install -o builder -g builder -m644 "$built.sig" "$REPO/"
 
-  # Из кэша pacman копию прошлой сборки надо убрать. Версия пакета не
-  # меняется от пересборки, а содержимое меняется — и pacman, найдя в кэше
-  # файл с нужным именем, сверит его с новой подписью и объявит
-  # повреждённым. Так уже падала сборка образа.
-  rm -f "/var/cache/pacman/pkg/$(basename "$built")"         "/var/cache/pacman/pkg/$(basename "$built").sig"
+  # The previous build's copy has to be dropped from pacman's cache. Rebuilding
+  # does not change the package version but does change its contents, so pacman
+  # finds a file with the expected name in the cache, checks it against the new
+  # signature and declares it corrupted. An image build has already failed this
+  # way.
+  rm -f "/var/cache/pacman/pkg/$(basename "$built")" "/var/cache/pacman/pkg/$(basename "$built").sig"
 
-  msg "  → $(basename "$built") + подпись"
+  msg "  -> $(basename "$built") + signature"
 done
 
-msg "Обновляю репозиторий $REPO"
+msg "Updating the repository in $REPO"
 mapfile -t pkgfiles < <(find "$REPO" -maxdepth 1 -name '*.pkg.tar.*' ! -name '*.sig' | sort)
-[[ ${#pkgfiles[@]} -gt 0 ]] || die "В репозитории нет пакетов"
-# Базу пересобираем с нуля, а не дописываем: список пакетов передаётся
-# целиком, так что старые записи об удалённых пакетах не переживут сборку.
-# Заодно это снимает проблему первого запуска — repo-add не пришлось бы
-# проверять подпись базы, которой ещё нет.
-rm -f "$REPO_DB" "$REPO_DB.sig" "${REPO_DB%.tar.gz}.files.tar.gz"       "$REPO/luna.files.tar.gz" "$REPO/luna.files.tar.gz.sig"
-# --include-sigs кладёт подпись пакета прямо в базу: иначе pacman ищет
-# файл .sig рядом с пакетом, и любая потеря этих файлов при копировании
-# репозитория молча превращает проверку в её отсутствие.
+[[ ${#pkgfiles[@]} -gt 0 ]] || die "No packages in the repository"
+# The database is rebuilt from scratch rather than appended to: the full list
+# of packages is passed in, so stale entries for removed packages do not
+# survive a build. It also removes the first-run problem, since repo-add never
+# has to verify a database signature that does not exist yet.
+rm -f "$REPO_DB" "$REPO_DB.sig" "${REPO_DB%.tar.gz}.files.tar.gz" "$REPO/luna.files.tar.gz" "$REPO/luna.files.tar.gz.sig"
+# --include-sigs puts the package signature straight into the database.
+# Without it pacman looks for a .sig file next to the package, and losing those
+# files while copying the repository around silently turns verification into
+# the absence of verification.
 #
-# Сама база НЕ подписывается, и это осознанно. Arch не подписывает свои
-# базы по той же причине: подпись базы защищала бы только список пакетов,
-# тогда как каждый пакет в списке и так несёт собственную подпись внутри
-# базы. Подменить пакет чужим она не позволит в любом случае.
-# Практический вред от подписи базы был измерен: mkarchiso в конце сборки
-# зовёт pacman -Q --sysroot по образу, у образа своей связки ключей нет
-# (archiso создаёт её только при загрузке, сервисом pacman-init), и сборка
-# начинала выдавать «key is unknown / keyring is not writable». Ошибки в
-# логе сборки, которые ничего не значат, — верный способ не заметить
-# настоящую.
+# The database itself is deliberately NOT signed. Arch does not sign its own
+# databases for the same reason: a database signature would only protect the
+# list of packages, while every package in that list already carries its own
+# signature inside the database. It would not help against a package being
+# swapped for somebody else's either way.
+# The practical harm of signing the database was measured: at the end of a
+# build mkarchiso calls pacman -Q --sysroot against the image, the image has no
+# keyring of its own (archiso creates it only at boot, through pacman-init),
+# and the build started emitting "key is unknown / keyring is not writable".
+# Errors in a build log that mean nothing are a reliable way to miss the one
+# that does.
 sudo -u builder repo-add -q --include-sigs "$REPO_DB" "${pkgfiles[@]}" >/dev/null
-# repo-add оставляет позади прошлую версию базы. В репозиторий, который
-# целиком уезжает на образ, этот хвост тащить незачем.
+# repo-add leaves the previous version of the database behind. There is no
+# reason to drag that tail into a repository that is copied onto the image
+# whole.
 rm -f "$REPO"/*.old
 
-msg "Содержимое репозитория:"
+msg "Repository contents:"
 ls -1sh "$REPO"/*.pkg.tar.zst | sed 's/^/  /'
 echo
-msg "Пакетов в базе: $(tar tzf "$REPO_DB" 2>/dev/null | grep -c '/desc$' || echo 0)"
+msg "Packages in the database: $(tar tzf "$REPO_DB" 2>/dev/null | grep -c '/desc$' || echo 0)"
 
-# Подпись, которой нет в базе, pacman проигнорирует — проверяем, что поле
-# %PGPSIG% реально записано для каждого пакета, а не только лежит файлом.
+# A signature that is not in the database is ignored by pacman, so check that
+# the %PGPSIG% field is really recorded for every package and not merely
+# present as a file.
 signed_in_db=$(tar xzOf "$REPO_DB" --wildcards '*/desc' 2>/dev/null | grep -c '^%PGPSIG%$' || true)
-msg "Из них с подписью в базе: $signed_in_db"
+msg "Of those, signed in the database: $signed_in_db"
 [[ "$signed_in_db" -eq "${#pkgfiles[@]}" ]] \
-  || die "Подписаны не все: пакетов ${#pkgfiles[@]}, подписей в базе $signed_in_db"
+  || die "Not all are signed: ${#pkgfiles[@]} packages, $signed_in_db signatures in the database"

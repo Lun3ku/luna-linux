@@ -3,7 +3,7 @@ Description=Luna Linux wallpaper
 Documentation=man:swaybg(1)
 PartOf=graphical-session.target
 After=graphical-session.target
-# Без работающего Wayland-сеанса запускаться бессмысленно.
+# There is no point starting without a working Wayland session.
 ConditionEnvironment=WAYLAND_DISPLAY
 
 [Service]

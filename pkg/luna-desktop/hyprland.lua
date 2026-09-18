@@ -1,43 +1,43 @@
--- Конфигурация Hyprland для Luna Linux.
+-- The Hyprland configuration for Luna Linux.
 --
--- Формат — Lua. В Hyprland 0.56 это основной формат: именно его пакет везёт
--- как пример, и на нём написана официальная вики. Привычный hyprland.conf
--- тоже ещё работает, но сам Hyprland называет его legacy в своих логах,
--- поэтому Luna сразу на новом.
+-- The format is Lua. In Hyprland 0.56 that is the primary format: it is what
+-- the package ships as its example, and what the official wiki is written in.
+-- The familiar hyprland.conf still works, but Hyprland itself calls it legacy
+-- in its logs, so Luna starts out on the new one.
 --
--- Документация: https://wiki.hypr.land/Configuring/Start/
--- Полное описание API лежит рядом с Hyprland: /usr/share/hypr/stubs/hl.meta.lua
+-- Documentation: https://wiki.hypr.land/Configuring/Start/
+-- The full API description ships next to Hyprland: /usr/share/hypr/stubs/hl.meta.lua
 --
--- Файл можно смело править — он ваш. Обновление пакета его не перезапишет,
--- потому что пользователю он копируется из /etc/skel при создании.
+-- Feel free to edit this file, it is yours. A package update will not
+-- overwrite it, because it is copied to the user from /etc/skel at creation.
 
 --------------------------------------------------------------------------
--- ПАЛИТРА
--- Меняешь здесь — меняется во всём конфиге. Те же цвета продублированы
--- в waybar/style.css, mako и rofi: держи их в согласии.
+-- THE PALETTE
+-- Change it here and it changes throughout this config. The same colours are
+-- duplicated in waybar/style.css, mako and rofi: keep them in agreement.
 --------------------------------------------------------------------------
 local luna = {
-    accent   = "b4a0ff",   -- лавандовый, основной
-    accent2  = "8bd5ff",   -- голубой, для градиента рамки
-    inactive = "2a2739",   -- рамка неактивного окна
+    accent   = "b4a0ff",   -- lavender, the main one
+    accent2  = "8bd5ff",   -- light blue, for the border gradient
+    inactive = "2a2739",   -- the border of an inactive window
 }
 
 --------------------------------------------------------------------------
--- ПРОГРАММЫ
--- Задаются один раз, дальше используются в горячих клавишах.
+-- PROGRAMS
+-- Defined once, then used in the key bindings below.
 --------------------------------------------------------------------------
 local terminal    = "kitty"
 local fileManager = "thunar"
 local launcher    = "rofi -show drun"
 local windowList  = "rofi -show window"
-local clipboard   = "cliphist list | rofi -dmenu -p Буфер | cliphist decode | wl-copy"
+local clipboard   = "cliphist list | rofi -dmenu -p Clipboard | cliphist decode | wl-copy"
 local screenArea  = "grim -g \"$(slurp)\" - | swappy -f -"
 local screenFull  = "grim - | swappy -f -"
 
 --------------------------------------------------------------------------
--- МОНИТОРЫ
--- Пустой output означает «все остальные»: подходит и ноутбуку, и виртуалке,
--- и внешнему экрану без правки конфига.
+-- MONITORS
+-- An empty output means "all the rest": it suits a laptop, a virtual machine
+-- and an external screen alike, with no edits to this config.
 -- https://wiki.hypr.land/Configuring/Basics/Monitors/
 --------------------------------------------------------------------------
 hl.monitor({
@@ -48,9 +48,9 @@ hl.monitor({
 })
 
 --------------------------------------------------------------------------
--- ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ
--- Без этих строк часть приложений уходит в режим X11 через XWayland
--- и выглядит размыто при дробном масштабе.
+-- ENVIRONMENT VARIABLES
+-- Without these lines some applications fall back to X11 through XWayland
+-- and look blurry at fractional scaling.
 --------------------------------------------------------------------------
 hl.env("XCURSOR_SIZE", "24")
 hl.env("HYPRCURSOR_SIZE", "24")
@@ -60,31 +60,32 @@ hl.env("MOZ_ENABLE_WAYLAND", "1")
 hl.env("ELECTRON_OZONE_PLATFORM_HINT", "auto")
 
 --------------------------------------------------------------------------
--- АВТОЗАПУСК
--- Пусто, и это осознанно. Панель, уведомления, обои, автоблокировку,
--- агент прав и историю буфера обмена поднимает systemd как юниты
--- пользователя — он же их перезапустит, если что-то упадёт. Работает это
--- потому, что сеанс стартует через uwsm, который доводит загрузку до
+-- AUTOSTART
+-- Empty, and deliberately so. The panel, the notifications, the wallpaper,
+-- the idle lock, the polkit agent and the clipboard history are started by
+-- systemd as user units, and systemd restarts them if any of them dies. This
+-- works because the session starts through uwsm, which carries the boot all
+-- the way to graphical-session.target.
 -- graphical-session.target.
 --
--- nm-applet отсюда убран намеренно: он показывал в системном лотке
--- кнопку без иконки. Состояние сети и так видно в панели, по клику на
--- неё открывается nmtui, а на живом образе сетью управляет
--- systemd-networkd, с которым апплету и говорить не о чем.
+-- nm-applet was removed from here on purpose: it put a button with no icon
+-- into the system tray. The network state is visible in the panel anyway,
+-- clicking it opens nmtui, and on the live image the network is managed by
+-- systemd-networkd, which the applet has nothing to say to.
 --------------------------------------------------------------------------
 
--- Страховка на случай, когда Hyprland запустили НЕ через uwsm: например
--- вручную из консоли или выбрав в меню входа обычный пункт Hyprland.
--- Тогда systemd не поднимает graphical-session.target, и панель, обои,
--- уведомления и агент прав остаются мёртвыми. Проверено: is-active
--- показывал inactive у всех, а XDG_CURRENT_DESKTOP был пуст.
--- Если сеанс уже поднят uwsm, проверка ничего не делает.
+-- A safety net for when Hyprland was started NOT through uwsm: by hand from
+-- a console, say, or by picking the plain Hyprland entry in the login menu.
+-- systemd then never brings graphical-session.target up, and the panel, the
+-- wallpaper, the notifications and the polkit agent stay dead. Verified:
+-- is-active reported inactive for all of them, and XDG_CURRENT_DESKTOP was empty.
+-- If the session is already up under uwsm, this check does nothing.
 hl.on("hyprland.start", function()
     hl.exec_cmd("systemctl --user is-active -q graphical-session.target || { systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE; systemctl --user start graphical-session.target; }")
 end)
 
 --------------------------------------------------------------------------
--- ВНЕШНИЙ ВИД
+-- APPEARANCE
 -- https://wiki.hypr.land/Configuring/Basics/Variables/
 --------------------------------------------------------------------------
 hl.config({
@@ -94,13 +95,13 @@ hl.config({
         border_size = 2,
 
         col = {
-            -- Градиент от лавандового к голубому под 45 градусов.
+            -- A gradient from lavender to light blue at 45 degrees.
             active_border   = { colors = { "rgba(" .. luna.accent .. "ee)",
                                            "rgba(" .. luna.accent2 .. "ee)" }, angle = 45 },
             inactive_border = "rgba(" .. luna.inactive .. "aa)",
         },
 
-        -- Менять размер окна, потянув за рамку или промежуток между окнами.
+        -- Resize a window by dragging its border or the gap between windows.
         resize_on_border = true,
 
         layout = "dwindle",
@@ -129,20 +130,21 @@ hl.config({
     },
 
     dwindle = {
-        -- Новое окно наследует направление деления, иначе раскладка
-        -- «прыгает» при каждом открытии.
+        -- A new window inherits the split direction, otherwise the layout
+        -- "jumps" every time something opens.
         preserve_split = true,
     },
 
     misc = {
-        -- Штатные обои и логотип Hyprland не нужны: обои ставит hyprpaper.
+        -- The stock wallpaper and Hyprland logo are not wanted: the wallpaper
+        -- is set by our own unit.
         force_default_wallpaper = 0,
         disable_hyprland_logo   = true,
-        -- И подпись-шутку внизу экрана тоже убираем.
+        -- And the joke caption at the bottom of the screen goes too.
         disable_splash_rendering = true,
 
-        -- Цвет под обоями. Если hyprpaper почему-то не поднялся, рабочий
-        -- стол всё равно выглядит намеренно, а не как чёрный провал.
+        -- The colour behind the wallpaper. If hyprpaper somehow failed to
+        -- start, the desktop still looks deliberate rather than like a black hole.
         background_color = "rgb(12111a)",
     },
 
@@ -160,9 +162,9 @@ hl.config({
 })
 
 --------------------------------------------------------------------------
--- АНИМАЦИИ
--- Кривые и скорости взяты из эталонного примера Hyprland: они выверены
--- так, чтобы интерфейс казался быстрым, а не медленно-красивым.
+-- ANIMATIONS
+-- The curves and speeds are taken from the reference Hyprland example: they
+-- are tuned to make the interface feel fast rather than slowly beautiful.
 -- https://wiki.hypr.land/Configuring/Advanced-and-Cool/Animations/
 --------------------------------------------------------------------------
 hl.curve("easeOutQuint",   { type = "bezier", points = { {0.23, 1},    {0.32, 1} } })
@@ -186,27 +188,28 @@ hl.animation({ leaf = "layersOut",  enabled = true, speed = 1.5,  bezier = "line
 hl.animation({ leaf = "workspaces", enabled = true, speed = 1.94, bezier = "almostLinear", style = "fade" })
 
 --------------------------------------------------------------------------
--- ЖЕСТЫ ТАЧПАДА
+-- TOUCHPAD GESTURES
 --------------------------------------------------------------------------
 hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
 
 --------------------------------------------------------------------------
--- ГОРЯЧИЕ КЛАВИШИ
--- Раскладка привычная для тайлингов: Super+Enter — терминал,
--- Super+Q — закрыть окно. В эталонном примере Hyprland наоборот
--- (Q запускает терминал), но это сбивает всех, кто пришёл из i3 или sway.
+-- KEY BINDINGS
+-- The layout is the one tiling users expect: Super+Enter for a terminal,
+-- Super+Q to close a window. The reference Hyprland example has it the other
+-- way round (Q starts a terminal), but that throws off everyone coming from
+-- i3 or sway.
 -- https://wiki.hypr.land/Configuring/Basics/Binds/
 --------------------------------------------------------------------------
 local mod = "SUPER"
 
--- Программы
+-- Programs
 hl.bind(mod .. " + Return",    hl.dsp.exec_cmd(terminal))
 hl.bind(mod .. " + E",         hl.dsp.exec_cmd(fileManager))
 hl.bind(mod .. " + R",         hl.dsp.exec_cmd(launcher))
 hl.bind(mod .. " + Tab",       hl.dsp.exec_cmd(windowList))
 hl.bind(mod .. " + SHIFT + V", hl.dsp.exec_cmd(clipboard))
 
--- Окна
+-- Windows
 hl.bind(mod .. " + Q",         hl.dsp.window.close())
 hl.bind(mod .. " + F",         hl.dsp.window.fullscreen())
 hl.bind(mod .. " + V",         hl.dsp.window.float({ action = "toggle" }))
@@ -214,16 +217,16 @@ hl.bind(mod .. " + C",         hl.dsp.window.center())
 hl.bind(mod .. " + P",         hl.dsp.window.pin())
 hl.bind(mod .. " + T",         hl.dsp.layout("togglesplit"))
 
--- Сеанс
+-- Session
 hl.bind(mod .. " + L",         hl.dsp.exec_cmd("loginctl lock-session"))
 hl.bind(mod .. " + M",         hl.dsp.exec_cmd("hyprshutdown"))
 
--- Снимки экрана
+-- Screenshots
 hl.bind(mod .. " + SHIFT + S", hl.dsp.exec_cmd(screenArea))
 hl.bind("Print",               hl.dsp.exec_cmd(screenFull))
 hl.bind(mod .. " + SHIFT + C", hl.dsp.exec_cmd("hyprpicker -a"))
 
--- Фокус: стрелками и по vim-раскладке hjkl
+-- Focus: with the arrow keys and with the vim hjkl layout
 hl.bind(mod .. " + left",  hl.dsp.focus({ direction = "left" }))
 hl.bind(mod .. " + right", hl.dsp.focus({ direction = "right" }))
 hl.bind(mod .. " + up",    hl.dsp.focus({ direction = "up" }))
@@ -233,27 +236,27 @@ hl.bind(mod .. " + L",     hl.dsp.focus({ direction = "right" }))
 hl.bind(mod .. " + K",     hl.dsp.focus({ direction = "up" }))
 hl.bind(mod .. " + J",     hl.dsp.focus({ direction = "down" }))
 
--- Рабочие столы: Super+цифра — перейти, Super+Shift+цифра — унести окно.
+-- Workspaces: Super+digit to switch, Super+Shift+digit to move a window there.
 for i = 1, 10 do
-    local key = i % 10                      -- десятый стол живёт на клавише 0
+    local key = i % 10                      -- the tenth workspace lives on key 0
     hl.bind(mod .. " + " .. key,         hl.dsp.focus({ workspace = i }))
     hl.bind(mod .. " + SHIFT + " .. key, hl.dsp.window.move({ workspace = i }))
 end
 
--- Переключение столов колесом мыши
+-- Switching workspaces with the mouse wheel
 hl.bind(mod .. " + mouse_down", hl.dsp.focus({ workspace = "e+1" }))
 hl.bind(mod .. " + mouse_up",   hl.dsp.focus({ workspace = "e-1" }))
 
--- Отдельный «карманный» стол — удобно держать там мессенджер или музыку
+-- A separate "pocket" workspace, handy for a messenger or music
 hl.bind(mod .. " + S",             hl.dsp.workspace.toggle_special("magic"))
 hl.bind(mod .. " + SHIFT + Return", hl.dsp.window.move({ workspace = "special:magic" }))
 
--- Перетаскивание и изменение размера мышью
+-- Dragging and resizing with the mouse
 hl.bind(mod .. " + mouse:272", hl.dsp.window.drag(),   { mouse = true })
 hl.bind(mod .. " + mouse:273", hl.dsp.window.resize(), { mouse = true })
 
--- Мультимедийные клавиши.
--- locked — работают и на заблокированном экране, repeating — при удержании.
+-- Multimedia keys.
+-- locked means they work on a locked screen, repeating means while held.
 hl.bind("XF86AudioRaiseVolume",  hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+"), { locked = true, repeating = true })
 hl.bind("XF86AudioLowerVolume",  hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"),      { locked = true, repeating = true })
 hl.bind("XF86AudioMute",         hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),     { locked = true })
@@ -265,16 +268,16 @@ hl.bind("XF86AudioNext",         hl.dsp.exec_cmd("playerctl next"),       { lock
 hl.bind("XF86AudioPrev",         hl.dsp.exec_cmd("playerctl previous"),   { locked = true })
 
 --------------------------------------------------------------------------
--- ПРАВИЛА ОКОН
+-- WINDOW RULES
 --------------------------------------------------------------------------
--- Окно запроса прав не должно теряться за другими.
+-- The polkit prompt must not get lost behind other windows.
 hl.window_rule({
     name  = "float-polkit",
     match = { class = "^(hyprpolkitagent|polkit-gnome-authentication-agent-1)$" },
     float = true,
 })
 
--- Регулятор звука удобнее плавающим окном, а не во всю раскладку.
+-- The volume control is more convenient as a floating window than tiled.
 hl.window_rule({
     name  = "float-pavucontrol",
     match = { class = "^(org.pulseaudio.pavucontrol|pavucontrol)$" },

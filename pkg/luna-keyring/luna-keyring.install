@@ -1,6 +1,7 @@
-# Наполняет связку ключей pacman нашим ключом. Тот же приём, что у
-# archlinux-keyring: пакет кладёт публичный ключ и файл доверия в
-# /usr/share/pacman/keyrings, а install-скрипт говорит pacman-key их взять.
+# Fills the pacman keyring with our key. The same approach archlinux-keyring
+# uses: the package drops the public key and the trust file into
+# /usr/share/pacman/keyrings, and the install script tells pacman-key to pick
+# them up.
 
 post_install() {
   if usr/bin/pacman-key -l >/dev/null 2>&1; then
@@ -15,8 +16,8 @@ post_upgrade() {
 }
 
 pre_remove() {
-  # Убираем ключ из связки: иначе останется доверие к ключу, файлов
-  # которого в системе уже нет.
+  # Remove the key from the keyring: otherwise trust remains for a key whose
+  # files are no longer on the system.
   if usr/bin/pacman-key -l >/dev/null 2>&1; then
     local fpr
     while IFS=: read -r fpr _; do

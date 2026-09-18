@@ -1,18 +1,19 @@
-# Цветовая схема установщика Luna.
+# The colour scheme of the Luna installer.
 #
-# dialog умеет только восемь базовых имён цветов, зато терминал сам
-# отображает их своей палитрой. Kitty в Luna настроен так, что
-# MAGENTA — это лавандовый #b4a0ff, CYAN — голубой #8bd5ff, а BLACK —
-# тёмная подложка #1b1926. Поэтому базовых имён достаточно, чтобы
-# установщик выглядел частью системы, а не куском чужого интерфейса.
+# dialog knows only the eight basic colour names, but the terminal renders
+# them with its own palette. Kitty in Luna is set up so that MAGENTA is the
+# lavender #b4a0ff, CYAN is the light blue #8bd5ff and BLACK is the dark
+# backdrop #1b1926. The basic names are therefore enough to make the
+# installer look like part of the system rather than a piece of somebody
+# else's interface.
 #
-# Флаг ON включает яркий вариант цвета (второй ряд палитры).
+# The ON flag turns on the bright variant of a colour (the second row of the palette).
 
 use_shadow = OFF
 use_colors = ON
 use_scrollbar = ON
 
-# Фон за окнами — тёмный, вместо стандартного ярко-синего.
+# The background behind the windows is dark, instead of the standard bright blue.
 screen_color = (BLACK,BLACK,OFF)
 shadow_color = (BLACK,BLACK,OFF)
 
@@ -21,7 +22,7 @@ title_color  = (MAGENTA,BLACK,ON)
 border_color  = (BLACK,BLACK,ON)
 border2_color = (BLACK,BLACK,ON)
 
-# Активная кнопка — лавандовая заливка, как активный рабочий стол в панели.
+# The active button gets a lavender fill, like the active workspace in the panel.
 button_active_color         = (BLACK,MAGENTA,ON)
 button_inactive_color       = (WHITE,BLACK,OFF)
 button_key_active_color     = (BLACK,MAGENTA,ON)
