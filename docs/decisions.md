@@ -912,7 +912,33 @@ which is how a vendor exposes hardware data. These lines appear on that laptop
 under any Linux distribution and are fixed only by a BIOS update from the
 vendor. Nothing to do on our side.
 
-Hiding them with `quiet loglevel=3` on the live entry was considered and
+More of the same appeared earlier in the very same boot, at 0.3-0.5 seconds,
+while the kernel was loading the ACPI tables:
+
+```
+ACPI BIOS Error (bug): Could not resolve symbol [\_SB.PCI0.GPP2.BCM5], AE_NOT_FOUND
+ACPI BIOS Error (bug): Could not resolve symbol [\_SB.PCI0.GPP1.DEV0], AE_NOT_FOUND
+ACPI BIOS Error (bug): Could not resolve symbol [\_SB.WLBU._STA.WLVD], AE_NOT_FOUND
+ACPI Error: Aborting method \_SB.WLBU._STA due to previous error (AE_NOT_FOUND)
+```
+
+The firmware's own tables reference objects those tables do not contain. The
+only practical consequence worth checking is `\_SB.WLBU._STA`, which by its
+name is the status method of a wireless button: if a hardware wireless toggle
+misbehaves on such a machine, this is where it comes from.
+
+One line in that block is not an error at all and only looks like one in
+context:
+
+```
+virt/tdx: TDX not supported by the host platform
+```
+
+TDX is an Intel technology, and the `GPP1`/`GPP2` naming of the PCIe ports is
+what AMD chipsets use. On an AMD machine that line is a statement of fact, and
+it is printed on almost any machine.
+
+Hiding all of it with `quiet loglevel=3` on the live entry was considered and
 rejected: it would hide genuine kernel errors along with them, and archiso
 shows boot messages deliberately.
 
