@@ -1097,3 +1097,65 @@ first process holding a lock on an inode nobody can reach any more, and the
 second process creates a fresh file and locks that instead.
 
 The lock file is not rubbish to be cleaned up. It is the lock.
+
+## Hibernation: written correctly, not restored under QEMU
+
+The swap file is created, the parameters are right, `systemctl hibernate`
+powers the machine off in five seconds - and the next boot comes up fresh, at
+the login screen, with the session gone. The kernel says:
+
+```
+[    1.383896] PM: Image not found (code -22)
+```
+
+Narrowing this down took several passes, and the order of the checks is the
+useful part.
+
+**Is it our encryption plumbing?** The same install without LUKS behaves the
+same way. So no - and that ruled out the largest suspect in one step.
+
+**Is zram stealing the image?** zram runs at swap priority 100 and the swap
+file at -1, so it was a fair suspicion: an image written into compressed RAM
+disappears with the power. Testing it was cheap: `swapoff /dev/zram0`, then
+hibernate. Still no resume. Not zram.
+
+**Is the offset wrong?** This is where it gets interesting. All three numbers
+agree:
+
+```
+btrfs inspect-internal map-swapfile -r   140544
+/sys/power/resume_offset                 140544
+/sys/power/resume                        254:2      (that is /dev/vda2)
+```
+
+and reading the raw partition at that page lands exactly on the swap file's
+header. So the kernel is told to look in precisely the right place.
+
+**Is the image written at all?** Hibernate, let the machine power off, then read
+the disk image from the host while nothing is running:
+
+```
+$ dd if=/dev/nbd0p2 bs=4096 skip=140544 count=1 | strings
+SWAPSPACE2S1SUSPEND
+```
+
+`S1SUSPEND` is the hibernation signature. **The image is written correctly, at
+exactly the offset the kernel is told to read from.**
+
+So everything Luna configures is right, and what fails is the restore itself.
+With encryption the machine resets the moment systemd reports "Starting Resume
+from hibernation"; without it, the image is simply not picked up.
+
+That is the honest state of it: **configured correctly, verified up to and
+including the write, not restored under QEMU.** Whether it restores on real
+hardware is untested from here, and the one machine that could answer that is
+the laptop this is meant for.
+
+Two things worth keeping from the method:
+
+- Each step removed one suspect entirely rather than adjusting something and
+  hoping. Encryption, then zram, then the offset, then the write.
+- The decisive evidence came from outside the guest. Everything measured inside
+  a running system is measured after the interesting moment has passed; reading
+  the powered-off disk from the host is what showed that the write had been
+  fine all along.
