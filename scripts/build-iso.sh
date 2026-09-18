@@ -54,5 +54,24 @@ install -d "$LUNA_WORK/work"
 msg "Running mkarchiso"
 time mkarchiso -v -w "$LUNA_WORK/work" -o "$LUNA_WORK/out" "$LUNA_WORK/src/iso"
 
+# The work directory is around 7 GB and is wiped at the start of every build
+# anyway, so between builds it is pure dead weight. Removing it here keeps the
+# WSL disk from growing by a full image every time.
+#
+# Note that freeing space inside the virtual disk does not shrink the .vhdx
+# file on the Windows side. That needs a separate compaction:
+#   wsl --shutdown
+#   wsl --manage LunaBuild --set-sparse true
+msg "Cleaning the work directory ($(du -sh "$LUNA_WORK/work" 2>/dev/null | cut -f1))"
+rm -rf "${LUNA_WORK:?}/work"
+
+# Keep one version of each cached package. A full cache reaches a couple of
+# gigabytes and is re-downloadable by definition.
+if command -v paccache >/dev/null; then
+    paccache -rk1 -q 2>/dev/null || true
+    paccache -ruk0 -q 2>/dev/null || true
+fi
+
 msg "Finished images:"
 ls -lh "$LUNA_WORK/out"
+msg "Free space: $(df -h "$LUNA_WORK" | awk 'NR==2 {print $4}')"

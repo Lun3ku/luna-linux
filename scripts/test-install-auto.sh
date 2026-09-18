@@ -31,19 +31,34 @@ t() { bash "$L/vm-type.sh" "$@" >/dev/null; sleep "${DELAY:-3}"; }
 echo "== waiting for the live image to boot (${BOOT_WAIT:-210} s) =="
 sleep "${BOOT_WAIT:-210}"
 
-echo "== opening a terminal and starting the installer =="
-t meta_l+ret
-sleep 8
-t 'sudo luna-install' ret
-sleep 8
+# The installer opens by itself on the live desktop, through the
+# luna-live-installer user unit in the ISO overlay. Typing the command here as
+# well would start a second one, and two installers on one disk wipe the
+# partition table of whatever the first has installed.
+echo "== waiting for the installer to open by itself =="
+sleep 12
 
-echo "== walking through the screens =="
+# Both new screens default to No, so exercising them means pressing left
+# first. ENCRYPT=no / HIBERNATE=no run the plain path instead.
+echo "== walking through the screens (encrypt=${ENCRYPT:-yes} hibernate=${HIBERNATE:-yes}) =="
 t ret                 # Welcome -> Continue
 t ret                 # Keymap  -> us
 t ret                 # Region  -> UTC (first entry, the city screen is skipped)
 t ret                 # Disk    -> /dev/vda
 t ret                 # Scheme  -> auto
 t left ret            # Confirm erase -> Erase
+if [[ ${ENCRYPT:-yes} == yes ]]; then
+    t left ret        # Disk encryption -> Encrypt
+    t 'lunacrypt' ret # passphrase
+    t 'lunacrypt' ret # passphrase again
+else
+    t ret             # Disk encryption -> No
+fi
+if [[ ${HIBERNATE:-yes} == yes ]]; then
+    t left ret        # Hibernation -> Enable
+else
+    t ret             # Hibernation -> Skip
+fi
 t ret                 # Hostname -> luna
 t 'anya' ret          # User
 t 'lunatest' ret      # Password

@@ -22,7 +22,7 @@
 # compression does not get in the way.
 #
 # There is no swap partition: swap comes from zram in luna-base, which is faster and spares the disk.
-set -euo pipefail
+set -eEuo pipefail
 
 BACKTITLE="Luna Linux Installer"
 # Our own palette instead of the standard blue one: dialog knows only eight
@@ -36,6 +36,11 @@ declare -A CFG=(
     [disk]="" [esp]="" [root]="" [scheme]=""
     [hostname]="luna" [user]="" [password]=""
     [timezone]="UTC" [keymap]="us" [kernel]="linux" [profile]="desktop"
+    # [root] is what gets formatted and mounted; with encryption that is the
+    # mapper device, while [rootpart] stays the physical partition the
+    # bootloader has to be told to unlock.
+    [rootpart]="" [encrypt]="no" [passphrase]=""
+    [hibernate]="no" [swapsize]="" [resumeoffset]="" [initstyle]="udev"
 )
 
 log()  { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >> "$LOG"; }
@@ -44,6 +49,16 @@ die()  { dialog --backtitle "$BACKTITLE" --title "Error" --msgbox "$1" 10 64; ex
 # A wrapper around dialog: one consistent style, and the text returned
 # without stray quoting.
 d() { dialog --backtitle "$BACKTITLE" --no-shadow "$@" 3>&1 1>&2 2>&3; }
+
+# A yes/no dialog. The exit status has to be captured through "|| rc=$?",
+# because under "set -e" a standalone failing command ends the script right
+# there - which meant every Quit button used to kill the installer before its
+# own cancel message could be printed.
+ask() {
+    local rc=0
+    d "$@" || rc=$?
+    return "$rc"
+}
 
 # Cancel on any screen means quitting, not falling through with an empty answer.
 cancel_guard() {
@@ -59,18 +74,63 @@ require_root() {
 
 is_uefi() { [[ -d /sys/firmware/efi/efivars ]]; }
 
+# Two independent signs, because either can be missing on its own: a battery
+# in /sys, and the chassis type the firmware reports through DMI. Used only to
+# choose a sensible default, never to take a decision away from the user.
+is_laptop() {
+    compgen -G '/sys/class/power_supply/BAT*' >/dev/null 2>&1 && return 0
+    local chassis
+    chassis=$(hostnamectl chassis 2>/dev/null) || return 1
+    [[ $chassis == laptop || $chassis == convertible || $chassis == tablet ]]
+}
+
+# Total RAM rounded up to whole gibibytes. Hibernation writes all of it, so
+# the swap file cannot be smaller.
+ram_gib() { awk '/^MemTotal:/ {printf "%d", ($2 + 1048575) / 1048576}' /proc/meminfo; }
+
 #---------------------------------------------------------------------------
 # Screens
 #---------------------------------------------------------------------------
 
 screen_welcome() {
     local mode; mode=$(is_uefi && echo "UEFI" || echo "BIOS / Legacy")
-    d --title "Welcome" --yes-label "Continue" --no-label "Quit" --yesno "\n\
+    ask --title "Welcome" --yes-label "Continue" --no-label "Quit" --yesno "\n\
 Luna Linux installer.\n\n\
 Firmware mode detected: ${mode}\n\n\
 This will guide you through installing Luna onto a disk.\n\
 Nothing is written until you confirm on the summary screen.\n" 14 64
     cancel_guard $?
+}
+
+# The installation downloads its packages, so without a network it cannot
+# finish. This screen runs before the disk is touched: partitioning happens
+# at 5% and pacstrap at 30%, so a missing connection used to leave an erased
+# disk and a failure, which is the worst possible order of events.
+have_network() {
+    # Not a ping: ICMP is blocked on plenty of networks, while what pacstrap
+    # actually needs is HTTPS to a mirror. Two addresses, so one of them
+    # being down does not read as "no network".
+    curl -fsS --max-time 8 -o /dev/null https://geo.mirror.pkgbuild.com/ 2>/dev/null && return 0
+    curl -fsS --max-time 8 -o /dev/null https://archlinux.org/ 2>/dev/null
+}
+
+screen_network() {
+    while ! have_network; do
+        ask --title "No network" --yes-label "Connect" --no-label "Quit" \
+            --yesno "\nLuna downloads its packages during the installation, so a network\nconnection is required.\n\nChoosing Connect opens the network manager. Wired connections usually\ncome up on their own; for Wi-Fi, pick the network and enter the password.\n\nNothing has been written to any disk yet." 15 72 || {
+            clear
+            echo "Installation cancelled: no network connection."
+            exit 1
+        }
+        clear
+        if command -v nmtui >/dev/null 2>&1; then
+            nmtui connect || true
+        elif command -v iwctl >/dev/null 2>&1; then
+            iwctl
+        else
+            echo "Neither nmtui nor iwctl is available."; sleep 3
+        fi
+    done
 }
 
 screen_keymap() {
@@ -125,9 +185,9 @@ screen_scheme() {
         manual "Partition manually with cfdisk") || cancel_guard $?
 
     if [[ ${CFG[scheme]} == auto ]]; then
-        d --title "Confirm erase" --defaultno --yes-label "Erase" --no-label "Back" \
-          --yesno "\nEVERYTHING on ${CFG[disk]} will be destroyed.\n\nContinue?" 10 60
-        [[ $? -eq 0 ]] || { screen_scheme; return; }
+        ask --title "Confirm erase" --defaultno --yes-label "Erase" --no-label "Back" \
+            --yesno "\nEVERYTHING on ${CFG[disk]} will be destroyed.\n\nContinue?" 10 60 \
+            || { screen_scheme; return; }
     fi
 }
 
@@ -158,6 +218,51 @@ Remember to choose Write before quitting." 15 64
         CFG[esp]=$(d --title "EFI partition" --menu "\nWhich partition is the EFI System Partition?\n\nIt will be formatted as FAT32." \
             18 70 6 "${parts[@]}") || cancel_guard $?
         [[ ${CFG[esp]} != "${CFG[root]}" ]] || die "EFI and root cannot be the same partition."
+    fi
+}
+
+# Disk encryption. Offered for the automatic layout only: with manual
+# partitioning the user has already decided what goes where, and quietly
+# wrapping one of their partitions in LUKS would be a surprise.
+#
+# The passphrase is never passed on a command line and never written to the
+# log - cryptsetup reads it from standard input.
+screen_encryption() {
+    if [[ ${CFG[scheme]} != auto ]]; then
+        CFG[encrypt]=no
+        return 0
+    fi
+    ask --title "Disk encryption" --defaultno --yes-label "Encrypt" --no-label "No" \
+        --yesno "\nEncrypt the whole disk with LUKS?\n\nEverything except the EFI partition is encrypted, the snapshots\nincluded. The passphrase is asked for once at every boot, before\nthe menu appears.\n\nWithout the passphrase the data cannot be recovered. There is no\nrecovery key and no way around it." 16 70 || { CFG[encrypt]=no; return 0; }
+    CFG[encrypt]=yes
+    local p1 p2
+    while :; do
+        p1=$(d --title "Disk passphrase" --insecure --passwordbox \
+            "\nThis is asked at every boot:" 10 66) || cancel_guard $?
+        p2=$(d --title "Disk passphrase" --insecure --passwordbox \
+            "\nRepeat it:" 10 66) || cancel_guard $?
+        [[ -n $p1 && $p1 == "$p2" ]] && break
+        d --title "Try again" --msgbox \
+            "\nThe passphrases do not match, or the first one was empty." 8 60
+    done
+    CFG[passphrase]=$p1
+}
+
+# Hibernation needs a swap file the size of physical RAM, because that is what
+# gets written into it. zram already provides ordinary swap, so this is only
+# about suspending to disk - which is why it is a question rather than a
+# default: on a desktop with a lot of RAM it costs that much disk for
+# something that may never be used. A machine with a battery gets Yes
+# preselected, everything else gets No.
+screen_hibernation() {
+    CFG[swapsize]=$(ram_gib)
+    local -a def=()
+    is_laptop || def=(--defaultno)
+    if ask --title "Hibernation" "${def[@]}" --yes-label "Enable" --no-label "Skip" \
+            --yesno "\nSuspend to disk, so the machine can be powered off with the\nsession left open?\n\nIt needs a swap file of ${CFG[swapsize]} GiB, matching the physical\nmemory. The file lives in its own btrfs subvolume and is left out\nof the snapshots." 14 70; then
+        CFG[hibernate]=yes
+    else
+        CFG[hibernate]=no
     fi
 }
 
@@ -212,24 +317,31 @@ screen_profile() {
 
 screen_summary() {
     local mode; mode=$(is_uefi && echo UEFI || echo BIOS)
+    local enc hib
+    if [[ ${CFG[encrypt]} == yes ]]; then enc="LUKS, passphrase at every boot"
+    else enc="none"; fi
+    if [[ ${CFG[hibernate]} == yes ]]; then hib="swap file, ${CFG[swapsize]} GiB"
+    else hib="no (zram swap only)"; fi
     local layout
     if [[ ${CFG[scheme]} == auto ]]; then
         layout="whole disk, erased"
     else
         layout="root ${CFG[root]}${CFG[esp]:+, EFI ${CFG[esp]}}"
     fi
-    d --title "Ready to install" --defaultno --yes-label "Install" --no-label "Cancel" --yesno "\n\
+    ask --title "Ready to install" --defaultno --yes-label "Install" --no-label "Cancel" --yesno "\n\
   Disk        ${CFG[disk]}\n\
   Layout      ${layout}\n\
   Firmware    ${mode}\n\
   Filesystem  btrfs with snapshots\n\
+  Encryption  ${enc}\n\
+  Hibernation ${hib}\n\
   Kernel      ${CFG[kernel]}\n\
   Packages    ${CFG[profile]}\n\
   Host name   ${CFG[hostname]}\n\
   User        ${CFG[user]}\n\
   Time zone   ${CFG[timezone]}\n\
   Keymap      ${CFG[keymap]}\n\n\
-Writing starts now. Data on the disk will be lost.\n" 20 66
+Writing starts now. Data on the disk will be lost.\n" 22 66
     cancel_guard $?
 }
 
@@ -238,6 +350,23 @@ Writing starts now. Data on the disk will be lost.\n" 20 66
 #---------------------------------------------------------------------------
 
 FAILMARK=/run/luna-install.failed
+
+# Failures that do not go through run() or runsh() still have to leave a trace.
+# Without this, a function that returns non-zero ends the installation through
+# errexit while main() finds no failure marker and reports success. That is not
+# hypothetical: one line of the form
+#
+#     [[ ${CFG[encrypt]} == yes ]] && runsh "chmod ..."
+#
+# sat at the end of do_configure, and on an unencrypted install it made the
+# function return 1. The installation stopped before the bootloader, said
+# nothing, and left a disk with an empty EFI partition.
+on_error() {
+    local rc=$1 line=$2
+    log "UNEXPECTED FAILURE: exit $rc at line $line"
+    [[ -f $FAILMARK ]] || echo "unexpected error at line $line (exit $rc)" > "$FAILMARK"
+}
+trap 'on_error $? $LINENO' ERR
 
 # Any failed command stops the installation and leaves a clear trace in the log.
 # Inside the gauge pipeline an ordinary set -e would not fire.
@@ -274,25 +403,60 @@ do_partition() {
         run sgdisk -n 1:0:+1G -t 1:ef00 -c 1:"EFI System" "$d"
         run sgdisk -n 2:0:0    -t 2:8304 -c 2:"Luna root" "$d"
         CFG[esp]=$(part_of "$d" 1)
-        CFG[root]=$(part_of "$d" 2)
+        CFG[rootpart]=$(part_of "$d" 2)
     else
         # GPT + GRUB on BIOS needs a separate partition for the bootloader image.
         run sgdisk -n 1:0:+1M -t 1:ef02 -c 1:"BIOS boot" "$d"
         run sgdisk -n 2:0:0    -t 2:8304 -c 2:"Luna root" "$d"
-        CFG[root]=$(part_of "$d" 2)
+        CFG[rootpart]=$(part_of "$d" 2)
     fi
     run partprobe "$d"
     sleep 2
+    do_encrypt
+}
+
+# The LUKS container, when encryption was chosen. Everything below works on
+# CFG[root] afterwards and does not care whether that is a partition or a
+# mapper device.
+#
+# The passphrase goes in through standard input: an argument would show up in
+# the process list and in the log this installer keeps.
+do_encrypt() {
+    if [[ ${CFG[encrypt]} != yes ]]; then
+        CFG[root]=${CFG[rootpart]}
+        return 0
+    fi
+    log "RUN: cryptsetup luksFormat ${CFG[rootpart]} (passphrase from stdin)"
+    if ! printf '%s' "${CFG[passphrase]}" | cryptsetup luksFormat --type luks2 --batch-mode --key-file - "${CFG[rootpart]}" >>"$LOG" 2>&1; then
+        log "FAILED: cryptsetup luksFormat"
+        echo 'cryptsetup luksFormat' > "$FAILMARK"
+        exit 1
+    fi
+    log "RUN: cryptsetup open ${CFG[rootpart]} luna"
+    if ! printf '%s' "${CFG[passphrase]}" | cryptsetup open --key-file - "${CFG[rootpart]}" luna >>"$LOG" 2>&1; then
+        log "FAILED: cryptsetup open"
+        echo 'cryptsetup open' > "$FAILMARK"
+        exit 1
+    fi
+    CFG[root]=/dev/mapper/luna
 }
 
 do_format() {
+    # Manual partitioning fills in CFG[root] directly and never encrypts, so
+    # the two names have to be brought back together here.
+    [[ -n ${CFG[rootpart]} ]] || CFG[rootpart]=${CFG[root]}
+
     [[ -n ${CFG[esp]} ]] && run mkfs.fat -F32 -n LUNA_EFI "${CFG[esp]}"
     run mkfs.btrfs -f -L Luna "${CFG[root]}"
 
     # The subvolumes are created on the bare root, then remounted by subvol.
     run mount "${CFG[root]}" /mnt
+    local -a subvols=(@ @home @snapshots @log @pkg)
+    # The swap file lives in its own subvolume so that it stays out of the
+    # snapshots: a snapshot of a swap file is both useless and large.
+    [[ ${CFG[hibernate]} == yes ]] && subvols+=(@swap)
     local sv
-    for sv in @ @home @snapshots @log @pkg; do
+    for sv in "${subvols[@]}"; do
         run btrfs subvolume create "/mnt/$sv"
     done
     run umount /mnt
@@ -309,6 +473,20 @@ do_mount() {
     run mount -o "$o,subvol=@log"       "${CFG[root]}" /mnt/var/log
     run mount -o "$o,subvol=@pkg"       "${CFG[root]}" /mnt/var/cache/pacman/pkg
     [[ -n ${CFG[esp]} ]] && run mount "${CFG[esp]}" /mnt/efi
+
+    if [[ ${CFG[hibernate]} == yes ]]; then
+        # No compression on this one. A swap file has to be a plain run of
+        # blocks the kernel can address directly, which is also why
+        # mkswapfile marks it nodatacow for us.
+        run mkdir -p /mnt/swap
+        run mount -o "noatime,subvol=@swap" "${CFG[root]}" /mnt/swap
+        run btrfs filesystem mkswapfile --size "${CFG[swapsize]}g" /mnt/swap/swapfile
+        run swapon /mnt/swap/swapfile
+        # The kernel resumes from a block offset, not from a path, so the
+        # offset has to be read now and put on the kernel command line later.
+        CFG[resumeoffset]=$(btrfs inspect-internal map-swapfile -r /mnt/swap/swapfile)
+        log "swap file offset: ${CFG[resumeoffset]}"
+    fi
     return 0
 }
 
@@ -316,6 +494,9 @@ do_pacstrap() {
     local pkgs=(base "${CFG[kernel]}" "${CFG[kernel]}-headers"
                 luna-keyring luna-release luna-base luna-cli)
     [[ ${CFG[profile]} == desktop ]] && pkgs+=(luna-desktop)
+    # The encrypt hook of mkinitcpio comes from cryptsetup, and without it on
+    # the target the initramfs cannot open the container it just created.
+    [[ ${CFG[encrypt]} == yes ]] && pkgs+=(cryptsetup)
 
     # The microcode matches the actual CPU vendor: the other one would merely
     # take up space and confuse the bootloader output.
@@ -377,16 +558,113 @@ do_configure() {
         runsh "printf '\n[luna]\nSigLevel = Required DatabaseOptional\nServer = file://%s\n' '$REPO_DIR' >> /mnt/etc/pacman.conf"
     fi
 
-    # Booting into a snapshot without the grub-btrfs-overlayfs hook gives a
-    # read-only system; overlayfs makes it usable for repairs. It goes at the
-    # end of HOOKS. The plymouth splash, by contrast, has to come right after
-    # udev, before kernel output starts pouring onto the screen.
-    runsh "sed -i 's/^HOOKS=(base udev /HOOKS=(base udev plymouth /' /mnt/etc/mkinitcpio.conf"
-    runsh "sed -i 's/^HOOKS=(\(.*\))\$/HOOKS=(\1 grub-btrfs-overlayfs)/' /mnt/etc/mkinitcpio.conf"
+    # mkinitcpio has two styles of hooks, the older udev one and the systemd
+    # one that is now the default, and they use different names for the same
+    # jobs. The style is read out of the file rather than assumed.
+    #
+    # This is not caution for its own sake. The previous version of this code
+    # edited "HOOKS=(base udev " - a line that stopped existing when the
+    # default changed - so the plymouth hook silently never made it into the
+    # initramfs, and nobody noticed, because a sed that matches nothing says
+    # nothing. The check at the end of this block exists for the same reason.
+    if grep -qE '^HOOKS=\(base +systemd' /mnt/etc/mkinitcpio.conf; then
+        CFG[initstyle]=systemd
+    fi
+    log "initramfs style: ${CFG[initstyle]}"
+
+    # The plymouth splash has to come right after the hook that sets up the
+    # console, before kernel output starts pouring onto the screen.
+    if [[ ${CFG[initstyle]} == systemd ]]; then
+    runsh "sed -i '/^HOOKS=/ s/ systemd / systemd plymouth /' /mnt/etc/mkinitcpio.conf"
+    else
+    runsh "sed -i '/^HOOKS=/ s/ udev / udev plymouth /' /mnt/etc/mkinitcpio.conf"
+    fi
+    # Booting into a snapshot without grub-btrfs-overlayfs gives a read-only
+    # system; overlayfs makes it usable for repairs. It goes last.
+    runsh "sed -i '/^HOOKS=/ s/)$/ grub-btrfs-overlayfs)/' /mnt/etc/mkinitcpio.conf"
+
+    if [[ ${CFG[encrypt]} == yes ]]; then
+        # Unlocking after block, when the device exists, and before the root
+        # filesystem is needed. sd-encrypt is the systemd counterpart of
+        # encrypt; putting the wrong one in leaves the initramfs waiting for
+        # a mapper device that nothing ever creates.
+        if [[ ${CFG[initstyle]} == systemd ]]; then
+    runsh "sed -i '/^HOOKS=/ s/ block / block sd-encrypt /' /mnt/etc/mkinitcpio.conf"
+        else
+    runsh "sed -i '/^HOOKS=/ s/ block / block encrypt /' /mnt/etc/mkinitcpio.conf"
+        fi
+    fi
+    # Resuming from hibernation needs a hook only in the udev style; systemd
+    # does it from the resume= kernel parameter on its own.
+    if [[ ${CFG[hibernate]} == yes && ${CFG[initstyle]} == udev ]]; then
+    runsh "sed -i '/^HOOKS=/ s/ filesystems / filesystems resume /' /mnt/etc/mkinitcpio.conf"
+    fi
+
+    # A key file baked into the initramfs, so the passphrase is typed once
+    # instead of twice: GRUB asks for it to read /boot, and without this the
+    # initramfs would ask again for the same container.
+    #
+    # It is safe here only because /boot is itself inside the encrypted
+    # volume, so the initramfs holding the key is encrypted too. With an
+    # unencrypted /boot this would hand the disk away.
+    if [[ ${CFG[encrypt]} == yes ]]; then
+        run dd if=/dev/urandom of=/mnt/crypto_keyfile.bin bs=512 count=4 status=none
+        run chmod 600 /mnt/crypto_keyfile.bin
+        log "RUN: cryptsetup luksAddKey (key file)"
+        if ! printf '%s' "${CFG[passphrase]}" | arch-chroot /mnt cryptsetup luksAddKey --key-file - "${CFG[rootpart]}" /crypto_keyfile.bin >>"$LOG" 2>&1; then
+            log "FAILED: cryptsetup luksAddKey"
+            echo 'cryptsetup luksAddKey' > "$FAILMARK"
+            exit 1
+        fi
+    runsh "sed -i 's|^FILES=.*|FILES=(/crypto_keyfile.bin)|' /mnt/etc/mkinitcpio.conf"
+
+        # In the systemd style the unlocking is described by /etc/crypttab,
+        # not by kernel parameters. x-initrd.attach is what makes sd-encrypt
+        # copy the line into the initramfs.
+        if [[ ${CFG[initstyle]} == systemd ]]; then
+            local luksuuid
+            luksuuid=$(blkid -s UUID -o value "${CFG[rootpart]}")
+            printf 'luna UUID=%s /crypto_keyfile.bin x-initrd.attach\n' "$luksuuid" >> /mnt/etc/crypttab
+            log "crypttab: luna UUID=$luksuuid"
+        fi
+    fi
+
+    # Verify rather than hope. Every hook that was supposed to be added is
+    # checked for, and a missing one stops the installation with a clear
+    # reason instead of producing a system that will not boot.
+    local hooks
+    hooks=$(grep '^HOOKS=' /mnt/etc/mkinitcpio.conf)
+    local -a want=(plymouth grub-btrfs-overlayfs)
+    if [[ ${CFG[encrypt]} == yes ]]; then
+        if [[ ${CFG[initstyle]} == systemd ]]; then want+=(sd-encrypt); else want+=(encrypt); fi
+    fi
+    if [[ ${CFG[hibernate]} == yes && ${CFG[initstyle]} == udev ]]; then want+=(resume); fi
+    local h
+    for h in "${want[@]}"; do
+        if [[ $hooks != *" $h"* ]]; then
+            log "FAILED: hook $h is missing from: $hooks"
+            echo "mkinitcpio hook missing: $h" > "$FAILMARK"
+            exit 1
+        fi
+    done
+    log "hooks: $hooks"
     run arch-chroot /mnt mkinitcpio -P
+    # The generated initramfs carries the key file. /boot is inside the
+    # encrypted volume, so it is not exposed at rest, but there is no reason
+    # for it to be readable by everyone on a running system either.
+    if [[ ${CFG[encrypt]} == yes ]]; then
+        runsh "chmod 600 /mnt/boot/initramfs-*.img"
+    fi
 }
 
 do_bootloader() {
+    # With /boot inside the encrypted volume, GRUB has to open the container
+    # itself in order to read the kernel. It only does that when told to, and
+    # it has to be told before grub-install, which is when the modules are
+    # chosen and embedded.
+    if [[ ${CFG[encrypt]} == yes ]]; then
+        runsh "grep -q '^GRUB_ENABLE_CRYPTODISK=' /mnt/etc/default/grub || echo 'GRUB_ENABLE_CRYPTODISK=y' >> /mnt/etc/default/grub"
+    fi
     if is_uefi; then
         run arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory=/efi \
             --bootloader-id=Luna --recheck
@@ -406,6 +684,30 @@ do_bootloader() {
     # quote so that whatever is already there survives (Arch defaults to
     # loglevel=3 quiet, without which kernel output would cover the splash).
     runsh "grep -q splash /mnt/etc/default/grub || sed -i '/^GRUB_CMDLINE_LINUX_DEFAULT=/ s/\"\$/ splash\"/' /mnt/etc/default/grub"
+
+    # Kernel parameters for the two optional features. GRUB_CMDLINE_LINUX
+    # applies to every menu entry, snapshots included, and a second
+    # assignment is enough: the file is sourced, so the last one wins and
+    # whatever Arch put in the first is left alone.
+    local -a extra=()
+    # Only the udev style needs the container described on the kernel command
+    # line. In the systemd style /etc/crypttab does that job, and grub-mkconfig
+    # writes root= from the mounted filesystem by itself.
+    if [[ ${CFG[encrypt]} == yes && ${CFG[initstyle]} == udev ]]; then
+        local luksuuid
+        luksuuid=$(blkid -s UUID -o value "${CFG[rootpart]}")
+        extra+=("cryptdevice=UUID=${luksuuid}:luna" "root=/dev/mapper/luna"
+                "cryptkey=rootfs:/crypto_keyfile.bin")
+    fi
+    if [[ ${CFG[hibernate]} == yes ]]; then
+        local fsuuid
+        fsuuid=$(blkid -s UUID -o value "${CFG[root]}")
+        extra+=("resume=UUID=${fsuuid}" "resume_offset=${CFG[resumeoffset]}")
+    fi
+    if (( ${#extra[@]} )); then
+        printf '\nGRUB_CMDLINE_LINUX="%s"\n' "${extra[*]}" >> /mnt/etc/default/grub
+        log "kernel cmdline additions: ${extra[*]}"
+    fi
 
     run arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
 }
@@ -468,12 +770,15 @@ main() {
     log "luna-install started"
 
     screen_welcome
+    screen_network
     screen_keymap
     loadkeys "${CFG[keymap]%%,*}" 2>/dev/null || true
     screen_timezone
     screen_disk
     screen_scheme
     [[ ${CFG[scheme]} == manual ]] && screen_manual_partitions
+    screen_encryption
+    screen_hibernation
     screen_hostname
     screen_user
     screen_kernel
@@ -495,7 +800,7 @@ Nothing was changed after that point." 14 68
         exit 1
     fi
 
-    d --title "Installation complete" --yes-label "Reboot" --no-label "Stay here" --yesno "\n\
+    ask --title "Installation complete" --yes-label "Reboot" --no-label "Stay here" --yesno "\n\
 Luna Linux is installed on ${CFG[disk]}.\n\n\
 On the next boot you will be greeted by the login screen.\n\
 Log in as ${CFG[user]}.\n\n\

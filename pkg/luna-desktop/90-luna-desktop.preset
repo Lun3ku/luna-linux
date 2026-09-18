@@ -2,3 +2,7 @@
 # The login screen. The unit conflicts with getty@tty1, which is intended:
 # greetd takes over the first console instead of the usual login prompt.
 enable greetd.service
+
+# Power profiles. Without the daemon running, the panel control has nothing to
+# talk to and the laptop stays on whatever the firmware chose.
+enable power-profiles-daemon.service

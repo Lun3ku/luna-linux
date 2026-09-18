@@ -1,0 +1,29 @@
+[Unit]
+# Opens the installer by itself when the live desktop comes up.
+#
+# Booting the live image is almost always done in order to install, and until
+# now nothing on screen said how: the desktop appeared and the command
+# "sudo luna-install" had to be known in advance. The installer's own first
+# screen is a welcome dialog with Continue and Quit, so opening it costs a
+# single keypress to anyone who only wants to look around.
+#
+# This lives in the ISO overlay, not in the luna-desktop package: an installed
+# system must not open an installer on every login.
+Description=Luna installer on the live desktop
+PartOf=graphical-session.target
+After=graphical-session.target waybar.service
+ConditionEnvironment=WAYLAND_DISPLAY
+# Only where the installer actually exists.
+ConditionPathExists=/usr/bin/luna-install
+
+[Service]
+Type=simple
+# A short delay so the panel and the wallpaper are already up and the window
+# does not appear against a blank screen.
+ExecStartPre=/usr/bin/sleep 2
+ExecStart=/usr/bin/kitty --title "Install Luna Linux" -e sudo luna-install
+Restart=no
+Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target

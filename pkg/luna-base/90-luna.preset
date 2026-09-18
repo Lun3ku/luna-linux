@@ -15,6 +15,11 @@ enable fstrim.timer
 enable paccache.timer
 enable reflector.timer
 
+# Firmware metadata refresh. The updates themselves are never applied on
+# their own: fwupdmgr asks first, as it should for something that writes to a
+# BIOS chip.
+enable fwupd-refresh.timer
+
 # Snapshots and rollback entries in the GRUB menu.
 enable snapper-timeline.timer
 enable snapper-cleanup.timer

@@ -64,6 +64,8 @@ bluez-utils
 blueman
 
 # --- hardware odds and ends ---
+power-profiles-daemon         # power saver / balanced / performance, switched
+                              # from the panel; 142 KiB
 brightnessctl                 # screen brightness
 playerctl                     # media control from the keyboard
 

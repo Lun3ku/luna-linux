@@ -38,3 +38,7 @@ plymouth             # a graphical splash instead of a stream of kernel text
 zram-generator       # compressed swap in RAM instead of a swap file
 pacman-contrib       # paccache, the automatic package cache cleanup
 reflector            # automatic mirror list refresh
+
+# --- firmware ---
+fwupd                # vendor firmware and BIOS updates from inside Linux,
+                     # through LVFS: fwupdmgr get-devices, then refresh/update

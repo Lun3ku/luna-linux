@@ -46,6 +46,7 @@ window#waybar {
 #wireplumber,
 #network,
 #bluetooth,
+#power-profiles-daemon,
 #battery,
 #clock {
     background-color: @surface;
@@ -63,6 +64,7 @@ window#waybar {
  * different glyph; round ones (clock, globe) always sit correctly. */
 #network,
 #bluetooth,
+#power-profiles-daemon,
 #privacy,
 #systemd-failed-units {
     min-width: 18px;
@@ -130,6 +132,8 @@ window#waybar.empty #window {
 #network.disconnected { color: @red; }
 #bluetooth.connected { color: @cyan; }
 
+#power-profiles-daemon.power-saver { color: @green; }
+#power-profiles-daemon.performance { color: @yellow; }
 #battery { color: @green; }
 #battery.charging { color: @cyan; }
 #battery.warning:not(.charging) { color: @yellow; }

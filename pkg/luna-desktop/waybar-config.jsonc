@@ -28,6 +28,7 @@
         "wireplumber",
         "network",
         "bluetooth",
+        "power-profiles-daemon",
         "battery",
         "clock",
         "tray"
@@ -93,6 +94,21 @@
         "tooltip-format-ethernet": "{ifname}  {ipaddr}",
         "tooltip-format-disconnected": "No network",
         "on-click": "kitty -e nmtui"
+    },
+
+    // Power saver / balanced / performance, switched by clicking. The icons
+    // are a leaf, scales and a bolt; every code was checked with
+    // fc-match ":charset=<code>" and comes from Symbols Nerd Font Mono.
+    "power-profiles-daemon": {
+        "format": "{icon}",
+        "tooltip": true,
+        "tooltip-format": "Power profile: {profile}",
+        "format-icons": {
+            "default":     "\uf24e",
+            "power-saver": "\uf06c",
+            "balanced":    "\uf24e",
+            "performance": "\uf0e7"
+        }
     },
 
     "bluetooth": {

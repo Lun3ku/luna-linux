@@ -942,3 +942,158 @@ Hiding all of it with `quiet loglevel=3` on the live entry was considered and
 rejected: it would hide genuine kernel errors along with them, and archiso
 shows boot messages deliberately.
 
+
+## mkinitcpio changed its default hooks, and a silent sed hid it for weeks
+
+The installer had always contained this line:
+
+```bash
+sed -i 's/^HOOKS=(base udev /HOOKS=(base udev plymouth /' /mnt/etc/mkinitcpio.conf
+```
+
+It stopped matching when mkinitcpio made the systemd-based hooks its default:
+
+```
+HOOKS=(base systemd autodetect microcode modconf kms keyboard sd-vconsole block filesystems fsck)
+```
+
+So `plymouth` was never added to the initramfs. Nobody noticed, because **a sed
+that matches nothing says nothing**. The check we thought covered this - "the
+theme is luna, /proc/cmdline has splash, plymouth-quit-wait is active" - was
+looking at the wrong place entirely: none of it inspects HOOKS.
+
+The two styles also want different names for the same jobs:
+
+| job | udev style | systemd style |
+|---|---|---|
+| unlock LUKS | `encrypt` hook, `cryptdevice=` on the cmdline | `sd-encrypt` hook, a line in `/etc/crypttab` |
+| resume | `resume` hook | nothing; systemd reads `resume=` itself |
+
+The installer now reads the style out of the file, edits accordingly, and then
+**verifies the result**, failing with a clear reason if a hook it expected is
+missing. The verification is the part that matters: the edit was never the
+fragile bit, the silence was.
+
+## An installation that failed and said nothing
+
+The disk came out with a complete system, a correct fstab, plymouth in the
+hooks - and an **empty EFI partition**. The firmware had nothing to boot and
+fell back to its device menu.
+
+The cause was one line, the last one in `do_configure`:
+
+```bash
+[[ ${CFG[encrypt]} == yes ]] && runsh "chmod 600 /mnt/boot/initramfs-*.img"
+}
+```
+
+On an unencrypted install the condition is false, so the `&&` list returns 1,
+so **the function returns 1**, and `set -e` ends the installation right there -
+before the bootloader step. No failure marker was written, because the exit did
+not go through `run()`, so `main()` found nothing wrong and carried on.
+
+Bash exempts the left-hand side of `&&` from errexit, which is why the pattern
+is safe in the middle of a function and dangerous as the last statement: there
+it decides the function's return value.
+
+Two fixes, and the second matters more:
+
+1. The line became a proper `if` block.
+2. An `ERR` trap now records any failure that does not go through `run()`:
+
+```bash
+trap 'on_error $? $LINENO' ERR
+```
+
+Verified on a reduced copy of the exact bug: before, silence and a wrong
+"complete"; after, `unexpected error at line 14 (exit 1)`.
+
+An installer is allowed to fail. It is not allowed to fail quietly.
+
+## The live image locked the user out of the installer
+
+Installing takes ten to fifteen minutes and needs no keystrokes. `hypridle` on
+the live image counts that as idleness: at five minutes it dims, at ten it runs
+`hyprlock`. The live user has no password by design, and an empty one is not
+accepted, so the screen could not be unlocked. The installation kept running
+behind the lock, unreachable.
+
+Giving the live user a password would be worse - it would have to be written
+down somewhere public. An installation medium simply has no business locking
+itself, so `hypridle.service` is masked in the ISO overlay. On an installed
+system it works as before, where there is a real password.
+
+## The live image now uses NetworkManager, like the installed system
+
+archiso's releng profile brings up `iwd` and `systemd-networkd`. Our panel's
+network module, shipped for the installed system, runs `nmtui` when clicked -
+and NetworkManager was not running on the image. So the one moment a person
+most needs it, "connect Wi-Fi before installing", answered with
+"NetworkManager is not running".
+
+The image was switched to NetworkManager: the same tool, the same click and the
+same `nmtui` as on the installed system. `iwd` was dropped from the package
+list, since nothing used it any more.
+
+While there, `/etc/motd` turned out to be entirely Arch's - it told the reader
+to install Arch Linux by following the Arch wiki, and to use `iwctl` for Wi-Fi.
+Rewritten for Luna.
+
+## The installer opens by itself on the live desktop
+
+Booting the live image is almost always done in order to install, and nothing
+on screen said how: the desktop appeared, and `sudo luna-install` had to be
+known in advance. A user unit in the ISO overlay now opens the installer two
+seconds after the panel is up.
+
+Its own first screen is a welcome dialog with Continue and Quit, so anyone who
+only wants to look around is one keypress away from a normal desktop. The unit
+lives in the overlay, not in the package: an installed system must not open an
+installer on every login.
+
+This also meant the automated test had to stop typing `sudo luna-install`
+itself - otherwise two installers run, which is the disaster described above.
+
+## Laptop or desktop: waybar already decides for itself
+
+A battery indicator on a desktop machine is nonsense. It turned out no work was
+needed: waybar hides the battery module when there is no battery, and the proof
+had been in front of us all along - QEMU has no battery, and no battery pill
+ever appeared in any screenshot of the panel.
+
+Where the distinction does matter is hibernation, because a swap file the size
+of RAM is a real cost on a desktop with a lot of it. There the installer asks,
+defaulting to Yes only where a battery exists. The detection uses two
+independent signs: `/sys/class/power_supply/BAT*` and the chassis type from
+`hostnamectl`.
+
+For units that genuinely only make sense on a laptop, systemd has
+`ConditionPathExistsGlob=/sys/class/power_supply/BAT*`, which is better than
+any detection we could write.
+
+## Build leftovers, and why the disk did not shrink
+
+After a day of builds the WSL disk held 6.9 GB of mkarchiso work directory,
+1.7 GB of package cache and a pile of debugging screenshots. The work directory
+is wiped at the start of every build anyway, so between builds it was pure dead
+weight. `build-iso.sh` now removes it at the end and trims the cache to one
+version per package.
+
+The part worth remembering: **freeing space inside the virtual disk does not
+shrink the .vhdx file on the Windows side**. That needs a separate compaction,
+with WSL stopped:
+
+```
+wsl --shutdown
+wsl --manage LunaBuild --set-sparse true
+```
+
+## Deleting a lock file defeats flock
+
+The two-installer disaster happened a second time, and again by our own hand:
+the cleanup between test runs contained `rm -f /var/luna/auto-install.lock`.
+`flock` holds a lock on an inode, not on a path. Removing the file leaves the
+first process holding a lock on an inode nobody can reach any more, and the
+second process creates a fresh file and locks that instead.
+
+The lock file is not rubbish to be cleaned up. It is the lock.

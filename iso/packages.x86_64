@@ -41,7 +41,6 @@ hyperv
 intel-ucode
 irssi
 iw
-iwd
 jfsutils
 kitty-terminfo
 kmscon-terminfo
@@ -76,6 +75,7 @@ mmc-utils
 modemmanager
 mtools
 nano
+networkmanager
 nbd
 ndisc6
 nfs-utils
