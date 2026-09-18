@@ -1,0 +1,60 @@
+# Цветовая схема установщика Luna.
+#
+# dialog умеет только восемь базовых имён цветов, зато терминал сам
+# отображает их своей палитрой. Kitty в Luna настроен так, что
+# MAGENTA — это лавандовый #b4a0ff, CYAN — голубой #8bd5ff, а BLACK —
+# тёмная подложка #1b1926. Поэтому базовых имён достаточно, чтобы
+# установщик выглядел частью системы, а не куском чужого интерфейса.
+#
+# Флаг ON включает яркий вариант цвета (второй ряд палитры).
+
+use_shadow = OFF
+use_colors = ON
+use_scrollbar = ON
+
+# Фон за окнами — тёмный, вместо стандартного ярко-синего.
+screen_color = (BLACK,BLACK,OFF)
+shadow_color = (BLACK,BLACK,OFF)
+
+dialog_color = (WHITE,BLACK,OFF)
+title_color  = (MAGENTA,BLACK,ON)
+border_color  = (BLACK,BLACK,ON)
+border2_color = (BLACK,BLACK,ON)
+
+# Активная кнопка — лавандовая заливка, как активный рабочий стол в панели.
+button_active_color         = (BLACK,MAGENTA,ON)
+button_inactive_color       = (WHITE,BLACK,OFF)
+button_key_active_color     = (BLACK,MAGENTA,ON)
+button_key_inactive_color   = (CYAN,BLACK,OFF)
+button_label_active_color   = (BLACK,MAGENTA,ON)
+button_label_inactive_color = (WHITE,BLACK,OFF)
+
+inputbox_color        = dialog_color
+inputbox_border_color = (BLACK,BLACK,ON)
+menubox_color         = dialog_color
+menubox_border_color  = (BLACK,BLACK,ON)
+
+item_color          = (WHITE,BLACK,OFF)
+item_selected_color = (BLACK,MAGENTA,ON)
+tag_color           = (CYAN,BLACK,OFF)
+tag_selected_color  = (BLACK,MAGENTA,ON)
+tag_key_color          = (CYAN,BLACK,OFF)
+tag_key_selected_color = (BLACK,MAGENTA,ON)
+
+position_indicator_color = (CYAN,BLACK,OFF)
+uarrow_color = (CYAN,BLACK,OFF)
+darrow_color = (CYAN,BLACK,OFF)
+itemhelp_color = (CYAN,BLACK,OFF)
+
+searchbox_color        = dialog_color
+searchbox_title_color  = title_color
+searchbox_border_color = (BLACK,BLACK,ON)
+
+check_color          = dialog_color
+check_selected_color = (BLACK,MAGENTA,ON)
+
+form_active_text_color  = (BLACK,MAGENTA,ON)
+form_text_color         = (WHITE,BLACK,OFF)
+form_item_readonly_color = (CYAN,BLACK,OFF)
+
+gauge_color = (MAGENTA,BLACK,ON)

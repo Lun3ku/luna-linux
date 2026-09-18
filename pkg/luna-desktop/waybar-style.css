@@ -1,0 +1,183 @@
+/* Оформление панели Luna Linux.
+ * Палитра совпадает с hyprland.lua, mako и rofi — меняешь здесь,
+ * меняй и там.
+ *
+ * Про геометрию. Все плашки намеренно одного роста и с одинаковыми
+ * отступами: раньше блок рабочих столов занимал всю высоту полосы и
+ * выглядел тяжёлым квадратом рядом с маленькими значками. Высота
+ * задаётся через margin сверху и снизу, а не через height — GTK сам
+ * центрирует содержимое по вертикали, и глифы с разными метриками
+ * перестают "плавать". */
+
+@define-color base     #12111a;
+@define-color surface  #1b1926;
+@define-color overlay  #2a2739;
+@define-color text     #e8e4f4;
+@define-color subtext  #9a93b3;
+@define-color accent   #b4a0ff;
+@define-color cyan     #8bd5ff;
+@define-color green    #9de8b8;
+@define-color yellow   #ffd79a;
+@define-color red      #ff92a8;
+
+* {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+    font-weight: 500;
+    border: none;
+    border-radius: 0;
+    min-height: 0;
+}
+
+/* Сама полоса прозрачная: видимыми делаем отдельные группы модулей,
+ * так панель не выглядит тяжёлой плашкой во всю ширину экрана. */
+window#waybar {
+    background: transparent;
+    color: @text;
+}
+
+/* Общая форма всех плашек. Вертикальный margin даёт одинаковый рост
+ * и отступ от края полосы. */
+#workspaces,
+#submap,
+#window,
+#privacy,
+#systemd-failed-units,
+#wireplumber,
+#network,
+#bluetooth,
+#battery,
+#clock {
+    background-color: @surface;
+    margin: 5px 3px;
+    padding: 0 12px;
+    border-radius: 10px;
+}
+
+/* Модули из одного значка без текста легко выходят узкими и рваными —
+ * задаём им минимальную ширину, чтобы ряд читался ровным.
+ *
+ * Если значок съезжает по вертикали, шрифт тут ни при чём: пробовали
+ * вариант Nerd Font Mono, не помогло. Дело в самом глифе — у части иконок
+ * Font Awesome рисунок смещён относительно базовой линии. Лечится заменой
+ * глифа на другой, а круглые (часы, глобус) садятся ровно всегда. */
+#network,
+#bluetooth,
+#privacy,
+#systemd-failed-units {
+    min-width: 18px;
+    padding: 0 10px;
+}
+
+/* --- Рабочие столы --- */
+
+#workspaces {
+    padding: 0 4px;
+}
+
+#workspaces button {
+    color: @subtext;
+    background-color: transparent;
+    min-width: 24px;
+    padding: 0 6px;
+    margin: 4px 2px;
+    border-radius: 8px;
+    transition: background-color 180ms ease, color 180ms ease;
+}
+
+/* Пустой стол виден, но приглушён: понятно, что слот есть и он свободен. */
+#workspaces button.empty {
+    color: @overlay;
+}
+
+#workspaces button:hover {
+    color: @text;
+    background-color: @overlay;
+}
+
+#workspaces button.active {
+    color: @base;
+    background-color: @accent;
+    font-weight: 700;
+}
+
+#workspaces button.urgent {
+    color: @base;
+    background-color: @red;
+}
+
+/* --- Остальные модули --- */
+
+#window {
+    color: @subtext;
+}
+
+/* Когда окон нет, заголовок не должен занимать место пустой плашкой. */
+window#waybar.empty #window {
+    background-color: transparent;
+}
+
+#submap { color: @cyan; }
+
+#clock {
+    color: @accent;
+    font-weight: 600;
+}
+
+#wireplumber { color: @cyan; }
+#wireplumber.muted { color: @subtext; }
+
+#network.disconnected { color: @red; }
+#bluetooth.connected { color: @cyan; }
+
+#battery { color: @green; }
+#battery.charging { color: @cyan; }
+#battery.warning:not(.charging) { color: @yellow; }
+
+/* Критический заряд мигает — единственная анимация в панели,
+ * и она нужна, чтобы это нельзя было не заметить. */
+#battery.critical:not(.charging) {
+    color: @red;
+    animation: blink 1s steps(2, start) infinite;
+}
+
+@keyframes blink {
+    to { color: @text; }
+}
+
+#privacy { color: @yellow; }
+#systemd-failed-units { color: @red; }
+
+/* Когда всё в порядке, модуль ничего не показывает и не занимает места. */
+#systemd-failed-units.ok {
+    min-width: 0;
+    padding: 0;
+    margin: 0;
+    background-color: transparent;
+}
+
+/* У лотка фона нет намеренно. Пока в нём нет элементов, плашка всё равно
+ * рисовалась бы — и справа от часов висела бы кнопка без иконки,
+ * назначение которой не угадать. Значки приложений, когда появятся,
+ * нормально читаются и без подложки. */
+#tray {
+    margin: 5px 3px;
+    padding: 0;
+}
+
+#tray menu {
+    background-color: @surface;
+    color: @text;
+    border-radius: 10px;
+}
+
+tooltip {
+    background-color: @surface;
+    border: 1px solid @overlay;
+    border-radius: 10px;
+}
+
+tooltip label {
+    color: @text;
+    padding: 4px;
+}

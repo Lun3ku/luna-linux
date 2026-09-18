@@ -1,0 +1,22 @@
+# Maintainer: Luna Linux
+pkgname=luna-keyring
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Ключ, которым подписаны пакеты Luna Linux"
+arch=('any')
+url="https://github.com/luna-linux"
+license=('GPL-3.0-or-later')
+
+# Ни от чего не зависит: этот пакет должен ставиться самым первым, до
+# того как система сможет проверить чьи-либо подписи.
+depends=()
+
+install="$pkgname.install"
+source=('luna.gpg'
+        'luna-trusted')
+sha256sums=('SKIP' 'SKIP')
+
+package() {
+  install -Dm644 "$srcdir/luna.gpg"     "$pkgdir/usr/share/pacman/keyrings/luna.gpg"
+  install -Dm644 "$srcdir/luna-trusted" "$pkgdir/usr/share/pacman/keyrings/luna-trusted"
+}

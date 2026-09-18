@@ -1,0 +1,504 @@
+#!/usr/bin/env bash
+# Установщик Luna Linux.
+#
+# Интерфейс — dialog: полноэкранные окна, меню и кнопки в терминале.
+# Тексты интерфейса английские, как и вся система; комментарии русские,
+# они для того, кто правит этот файл.
+#
+# Раскладка диска, которую ставит установщик:
+#
+#   ESP (fat32, 1 ГиБ)  -> /efi        только для UEFI
+#   btrfs (всё остальное)
+#       @         -> /
+#       @home     -> /home
+#       @snapshots-> /.snapshots
+#       @log      -> /var/log
+#       @pkg      -> /var/cache/pacman/pkg
+#
+# /boot намеренно лежит ВНУТРИ btrfs, а не на ESP: grub-btrfs грузится в
+# снапшот, а для этого ядро и модули должны попадать в снимок вместе с
+# системой. GRUB 2.14 читает btrfs со сжатием zstd (в btrfs.mod есть
+# grub_btrfs_zstd_decompress), так что сжатие этому не мешает.
+#
+# Раздела подкачки нет: своп даёт zram из luna-base — быстрее и не изнашивает диск.
+set -euo pipefail
+
+BACKTITLE="Luna Linux Installer"
+# Своя палитра вместо стандартной сине-голубой: dialog знает только восемь
+# базовых имён цветов, но терминал отображает их палитрой Luna.
+export DIALOGRC=${DIALOGRC:-/usr/share/luna/dialogrc}
+LOG=/var/log/luna-install.log
+REPO_DIR=/usr/share/luna/repo          # локальный репозиторий на образе
+
+# Сюда собираем ответы пользователя.
+declare -A CFG=(
+    [disk]="" [esp]="" [root]="" [scheme]=""
+    [hostname]="luna" [user]="" [password]=""
+    [timezone]="UTC" [keymap]="us" [kernel]="linux" [profile]="desktop"
+)
+
+log()  { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >> "$LOG"; }
+die()  { dialog --backtitle "$BACKTITLE" --title "Error" --msgbox "$1" 10 64; exit 1; }
+
+# Обёртка над dialog: единый стиль и возврат текста без лишних кавычек.
+d() { dialog --backtitle "$BACKTITLE" --no-shadow "$@" 3>&1 1>&2 2>&3; }
+
+# Отмена на любом экране — выход, а не проваливание дальше с пустым ответом.
+cancel_guard() {
+    [[ $1 -eq 0 ]] && return 0
+    clear
+    echo "Installation cancelled."
+    exit 1
+}
+
+require_root() {
+    [[ $EUID -eq 0 ]] || { echo "luna-install must be run as root: sudo luna-install"; exit 1; }
+}
+
+is_uefi() { [[ -d /sys/firmware/efi/efivars ]]; }
+
+#---------------------------------------------------------------------------
+# Экраны
+#---------------------------------------------------------------------------
+
+screen_welcome() {
+    local mode; mode=$(is_uefi && echo "UEFI" || echo "BIOS / Legacy")
+    d --title "Welcome" --yes-label "Continue" --no-label "Quit" --yesno "\n\
+Luna Linux installer.\n\n\
+Firmware mode detected: ${mode}\n\n\
+This will guide you through installing Luna onto a disk.\n\
+Nothing is written until you confirm on the summary screen.\n" 14 64
+    cancel_guard $?
+}
+
+screen_keymap() {
+    local sel
+    sel=$(d --title "Keyboard layout" --menu "\nConsole keymap:" 14 60 4 \
+        us "US English" \
+        us,ru "US + Russian" \
+        de "German" \
+        fr "French") || cancel_guard $?
+    CFG[keymap]=$sel
+}
+
+screen_timezone() {
+    local region city
+    # UTC лежит файлом в корне zoneinfo, а не каталогом, поэтому в общий
+    # список регионов он не попадает — добавляем его отдельным пунктом.
+    # --no-tags убирает вторую колонку: у этих меню подпись совпадает со
+    # значением, и дублирование только засоряло экран.
+    region=$(d --title "Time zone" --no-tags --menu "\nRegion:" 18 60 8 \
+        UTC "UTC (no local time zone)" \
+        $(find /usr/share/zoneinfo -mindepth 1 -maxdepth 1 -type d -printf '%f %f\n' \
+            | grep -vE '^(posix|right)' | sort)) || cancel_guard $?
+
+    if [[ $region == UTC ]]; then
+        CFG[timezone]=UTC
+        return
+    fi
+
+    city=$(d --title "Time zone" --no-tags --menu "\nCity in ${region}:" 20 60 12 \
+        $(find "/usr/share/zoneinfo/$region" -mindepth 1 -maxdepth 1 -printf '%f %f\n' | sort)) \
+        || cancel_guard $?
+    CFG[timezone]="$region/$city"
+}
+
+screen_disk() {
+    local items=() name size model
+    # Только настоящие диски: без разделов, CD-ROM и loop-устройств образа.
+    while read -r name size model; do
+        items+=("/dev/$name" "$size  ${model:-unknown}")
+    done < <(lsblk -dpno NAME,SIZE,MODEL --nodeps 2>/dev/null \
+             | sed 's|/dev/||' | grep -vE '^(loop|sr|ram)')
+
+    [[ ${#items[@]} -gt 0 ]] || die "No disks found.\n\nIf this is a virtual machine, check that a disk is attached."
+
+    CFG[disk]=$(d --title "Target disk" --menu "\nWhere should Luna be installed?" \
+        16 70 6 "${items[@]}") || cancel_guard $?
+}
+
+screen_scheme() {
+    CFG[scheme]=$(d --title "Partitioning" --menu "\nDisk: ${CFG[disk]}" 15 70 2 \
+        auto   "Erase the whole disk and set it up automatically" \
+        manual "Partition manually with cfdisk") || cancel_guard $?
+
+    if [[ ${CFG[scheme]} == auto ]]; then
+        d --title "Confirm erase" --defaultno --yes-label "Erase" --no-label "Back" \
+          --yesno "\nEVERYTHING on ${CFG[disk]} will be destroyed.\n\nContinue?" 10 60
+        [[ $? -eq 0 ]] || { screen_scheme; return; }
+    fi
+}
+
+# Ручная разметка: отдаём человеку cfdisk, потом спрашиваем, что есть что.
+screen_manual_partitions() {
+    d --title "cfdisk" --msgbox "\n\
+cfdisk will open now for ${CFG[disk]}.\n\n\
+Create at least:\n\
+  - an EFI System partition, 1 GiB (UEFI only)\n\
+  - a partition for the system\n\n\
+Remember to choose Write before quitting." 15 64
+    clear
+    cfdisk "${CFG[disk]}" || true
+    partprobe "${CFG[disk]}" 2>/dev/null || true
+    sleep 1
+
+    local parts=() name size fstype
+    while read -r name size fstype; do
+        parts+=("$name" "$size  ${fstype:-no filesystem}")
+    done < <(lsblk -pnlo NAME,SIZE,FSTYPE "${CFG[disk]}" | tail -n +2)
+
+    [[ ${#parts[@]} -gt 0 ]] || die "No partitions found on ${CFG[disk]}."
+
+    CFG[root]=$(d --title "Root partition" --menu "\nWhich partition should hold the system?\n\nIt will be formatted as btrfs." \
+        18 70 6 "${parts[@]}") || cancel_guard $?
+
+    if is_uefi; then
+        CFG[esp]=$(d --title "EFI partition" --menu "\nWhich partition is the EFI System Partition?\n\nIt will be formatted as FAT32." \
+            18 70 6 "${parts[@]}") || cancel_guard $?
+        [[ ${CFG[esp]} != "${CFG[root]}" ]] || die "EFI and root cannot be the same partition."
+    fi
+}
+
+screen_hostname() {
+    while :; do
+        CFG[hostname]=$(d --title "Host name" --inputbox "\nName for this machine on the network:" \
+            10 60 "${CFG[hostname]}") || cancel_guard $?
+        [[ ${CFG[hostname]} =~ ^[a-z][a-z0-9-]{0,62}$ ]] && break
+        d --title "Host name" --msgbox "\nUse lowercase letters, digits and dashes.\nMust start with a letter." 9 60
+    done
+}
+
+screen_user() {
+    while :; do
+        CFG[user]=$(d --title "User account" --inputbox "\nYour login name:" 10 60 "${CFG[user]}") \
+            || cancel_guard $?
+        if [[ ! ${CFG[user]} =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
+            d --title "User account" --msgbox "\nUse lowercase letters, digits, dash and underscore.\nMust start with a letter." 9 62
+            continue
+        fi
+        break
+    done
+
+    while :; do
+        local p1 p2
+        p1=$(d --title "Password" --insecure --passwordbox "\nPassword for ${CFG[user]}:" 10 60) \
+            || cancel_guard $?
+        p2=$(d --title "Password" --insecure --passwordbox "\nRepeat the password:" 10 60) \
+            || cancel_guard $?
+        if [[ -z $p1 ]]; then
+            d --title "Password" --msgbox "\nThe password cannot be empty." 8 50; continue
+        fi
+        if [[ $p1 != "$p2" ]]; then
+            d --title "Password" --msgbox "\nThe passwords do not match." 8 50; continue
+        fi
+        CFG[password]=$p1
+        break
+    done
+}
+
+screen_kernel() {
+    CFG[kernel]=$(d --title "Kernel" --menu "\nWhich kernel should Luna use?" 14 70 2 \
+        linux     "Latest stable. Recommended." \
+        linux-zen "Tuned for desktop responsiveness") || cancel_guard $?
+}
+
+screen_profile() {
+    CFG[profile]=$(d --title "What to install" --menu "\nPackage selection:" 14 70 2 \
+        desktop "Full Luna desktop: Hyprland, panel, apps" \
+        minimal "Base system and command line only") || cancel_guard $?
+}
+
+screen_summary() {
+    local mode; mode=$(is_uefi && echo UEFI || echo BIOS)
+    local layout
+    if [[ ${CFG[scheme]} == auto ]]; then
+        layout="whole disk, erased"
+    else
+        layout="root ${CFG[root]}${CFG[esp]:+, EFI ${CFG[esp]}}"
+    fi
+    d --title "Ready to install" --defaultno --yes-label "Install" --no-label "Cancel" --yesno "\n\
+  Disk        ${CFG[disk]}\n\
+  Layout      ${layout}\n\
+  Firmware    ${mode}\n\
+  Filesystem  btrfs with snapshots\n\
+  Kernel      ${CFG[kernel]}\n\
+  Packages    ${CFG[profile]}\n\
+  Host name   ${CFG[hostname]}\n\
+  User        ${CFG[user]}\n\
+  Time zone   ${CFG[timezone]}\n\
+  Keymap      ${CFG[keymap]}\n\n\
+Writing starts now. Data on the disk will be lost.\n" 20 66
+    cancel_guard $?
+}
+
+#---------------------------------------------------------------------------
+# Установка
+#---------------------------------------------------------------------------
+
+FAILMARK=/run/luna-install.failed
+
+# Любая упавшая команда останавливает установку с понятным следом в журнале.
+# Внутри конвейера с gauge обычный set -e не сработал бы.
+run() {
+    log "RUN: $*"
+    if ! "$@" >>"$LOG" 2>&1; then
+        log "FAILED: $*"
+        printf '%s\n' "$*" > "$FAILMARK"
+        exit 1
+    fi
+}
+
+# То же, но для строки, которую надо выполнить оболочкой.
+runsh() {
+    log "SH: $1"
+    if ! bash -c "$1" >>"$LOG" 2>&1; then
+        log "FAILED: $1"
+        printf '%s\n' "$1" > "$FAILMARK"
+        exit 1
+    fi
+}
+
+step() { printf 'XXX\n%s\n%s\nXXX\n' "$1" "$2"; }
+
+# nvme0n1 + 1 -> nvme0n1p1, sda + 1 -> sda1
+part_of() { [[ $1 =~ [0-9]$ ]] && echo "${1}p${2}" || echo "${1}${2}"; }
+
+do_partition() {
+    [[ ${CFG[scheme]} == auto ]] || return 0
+    local d=${CFG[disk]}
+    run sgdisk --zap-all "$d"
+    run wipefs -a "$d"
+    if is_uefi; then
+        run sgdisk -n 1:0:+1G -t 1:ef00 -c 1:"EFI System" "$d"
+        run sgdisk -n 2:0:0    -t 2:8304 -c 2:"Luna root" "$d"
+        CFG[esp]=$(part_of "$d" 1)
+        CFG[root]=$(part_of "$d" 2)
+    else
+        # GPT + GRUB на BIOS требует отдельного раздела для образа загрузчика.
+        run sgdisk -n 1:0:+1M -t 1:ef02 -c 1:"BIOS boot" "$d"
+        run sgdisk -n 2:0:0    -t 2:8304 -c 2:"Luna root" "$d"
+        CFG[root]=$(part_of "$d" 2)
+    fi
+    run partprobe "$d"
+    sleep 2
+}
+
+do_format() {
+    [[ -n ${CFG[esp]} ]] && run mkfs.fat -F32 -n LUNA_EFI "${CFG[esp]}"
+    run mkfs.btrfs -f -L Luna "${CFG[root]}"
+
+    # Подтома создаём на «голом» корне, потом перемонтируем уже по subvol.
+    run mount "${CFG[root]}" /mnt
+    local sv
+    for sv in @ @home @snapshots @log @pkg; do
+        run btrfs subvolume create "/mnt/$sv"
+    done
+    run umount /mnt
+}
+
+do_mount() {
+    # compress=zstd:3 — заметная экономия места почти без затрат процессора.
+    # noatime убирает запись времени доступа при каждом чтении.
+    local o="noatime,compress=zstd:3"
+    run mount -o "$o,subvol=@" "${CFG[root]}" /mnt
+    run mkdir -p /mnt/{home,.snapshots,var/log,var/cache/pacman/pkg,efi}
+    run mount -o "$o,subvol=@home"      "${CFG[root]}" /mnt/home
+    run mount -o "$o,subvol=@snapshots" "${CFG[root]}" /mnt/.snapshots
+    run mount -o "$o,subvol=@log"       "${CFG[root]}" /mnt/var/log
+    run mount -o "$o,subvol=@pkg"       "${CFG[root]}" /mnt/var/cache/pacman/pkg
+    [[ -n ${CFG[esp]} ]] && run mount "${CFG[esp]}" /mnt/efi
+    return 0
+}
+
+do_pacstrap() {
+    local pkgs=(base "${CFG[kernel]}" "${CFG[kernel]}-headers"
+                luna-release luna-base luna-cli)
+    [[ ${CFG[profile]} == desktop ]] && pkgs+=(luna-desktop)
+
+    # Микрокод ставим по фактическому производителю процессора: чужой
+    # просто занимал бы место и путал вывод загрузчика.
+    if grep -qi 'GenuineIntel' /proc/cpuinfo; then pkgs+=(intel-ucode)
+    elif grep -qi 'AuthenticAMD' /proc/cpuinfo; then pkgs+=(amd-ucode); fi
+
+    log "pacstrap packages: ${pkgs[*]}"
+    run pacstrap -K -C /etc/pacman.conf /mnt "${pkgs[@]}"
+}
+
+do_configure() {
+    runsh "genfstab -U /mnt >> /mnt/etc/fstab"
+
+    run arch-chroot /mnt ln -sf "/usr/share/zoneinfo/${CFG[timezone]}" /etc/localtime
+    run arch-chroot /mnt hwclock --systohc
+
+    # Локаль: en_US.UTF-8 уже включает luna-release, здесь только страхуемся.
+    runsh "sed -i 's/^#\(en_US\.UTF-8 UTF-8\)/\1/' /mnt/etc/locale.gen"
+    run arch-chroot /mnt locale-gen
+    runsh "echo 'LANG=en_US.UTF-8' > /mnt/etc/locale.conf"
+    runsh "echo 'KEYMAP=${CFG[keymap]}' > /mnt/etc/vconsole.conf"
+
+    runsh "echo '${CFG[hostname]}' > /mnt/etc/hostname"
+    runsh "printf '127.0.0.1 localhost\n::1 localhost\n127.0.1.1 %s.localdomain %s\n' '${CFG[hostname]}' '${CFG[hostname]}' > /mnt/etc/hosts"
+
+    # Пользователь. Оболочка fish — её приносит luna-cli вместе с настройками
+    # в /etc/skel, поэтому useradd -m сразу даёт готовое окружение.
+    run arch-chroot /mnt useradd -m -G wheel -s /usr/bin/fish "${CFG[user]}"
+    printf '%s:%s\n' "${CFG[user]}" "${CFG[password]}" | arch-chroot /mnt chpasswd \
+        || { printf 'chpasswd\n' > "$FAILMARK"; exit 1; }
+
+    # Root заблокирован: вход только через sudo. Если sudo сломается,
+    # выручит загрузка с этого же образа, а постоянно открытый root —
+    # лишняя поверхность для ошибок.
+    run arch-chroot /mnt passwd -l root
+    runsh "echo '%wheel ALL=(ALL:ALL) ALL' > /mnt/etc/sudoers.d/10-wheel"
+    run chmod 0440 /mnt/etc/sudoers.d/10-wheel
+
+    # Мелочи pacman, которые нельзя положить пакетом: /etc/pacman.conf
+    # принадлежит самому pacman и drop-in секций не поддерживает.
+    runsh "sed -i 's/^#Color\$/Color/;s/^#VerbosePkgLists\$/VerbosePkgLists/' /mnt/etc/pacman.conf"
+    runsh "grep -q '^ParallelDownloads' /mnt/etc/pacman.conf || sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 5/' /mnt/etc/pacman.conf"
+
+    # Локальный репозиторий переезжает на установленную систему: иначе
+    # пакеты luna-* остались бы без источника обновлений. Временная мера,
+    # пока нет настоящего репозитория в сети.
+    if [[ -d $REPO_DIR ]]; then
+        run mkdir -p /mnt"$REPO_DIR"
+        runsh "cp -a '$REPO_DIR'/. /mnt'$REPO_DIR'/"
+        runsh "printf '\n[luna]\nSigLevel = Optional TrustAll\nServer = file://%s\n' '$REPO_DIR' >> /mnt/etc/pacman.conf"
+    fi
+
+    # Загрузка в снапшот без hook grub-btrfs-overlayfs даёт систему только
+    # для чтения: overlayfs делает её пригодной для починки. Ставится в
+    # конец HOOKS. Заставка plymouth, наоборот, должна идти сразу после
+    # udev — до того, как на экран польётся вывод ядра.
+    runsh "sed -i 's/^HOOKS=(base udev /HOOKS=(base udev plymouth /' /mnt/etc/mkinitcpio.conf"
+    runsh "sed -i 's/^HOOKS=(\(.*\))\$/HOOKS=(\1 grub-btrfs-overlayfs)/' /mnt/etc/mkinitcpio.conf"
+    run arch-chroot /mnt mkinitcpio -P
+}
+
+do_bootloader() {
+    if is_uefi; then
+        run arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory=/efi \
+            --bootloader-id=Luna --recheck
+    else
+        run arch-chroot /mnt grub-install --target=i386-pc --recheck "${CFG[disk]}"
+    fi
+
+    # Вид меню загрузчика. /etc/default/grub принадлежит пакету grub и
+    # drop-in секций не поддерживает, поэтому правим его здесь, а не
+    # пакетом. Чёрный фон при заданной картинке GRUB считает прозрачным,
+    # поэтому текст ложится прямо на заставку.
+    runsh "sed -i 's|^GRUB_DISTRIBUTOR=.*|GRUB_DISTRIBUTOR=\"Luna\"|' /mnt/etc/default/grub"
+    runsh "sed -i 's|^#\?GRUB_GFXMODE=.*|GRUB_GFXMODE=auto|' /mnt/etc/default/grub"
+    runsh "grep -q '^GRUB_BACKGROUND=' /mnt/etc/default/grub || printf '\nGRUB_BACKGROUND=\"/usr/share/luna/grub-background.png\"\nGRUB_COLOR_NORMAL=\"light-gray/black\"\nGRUB_COLOR_HIGHLIGHT=\"light-magenta/black\"\n' >> /mnt/etc/default/grub"
+
+    # splash включает заставку plymouth. Дописываем его перед закрывающей
+    # кавычкой, чтобы сохранить то, что там уже есть (у Arch по умолчанию
+    # loglevel=3 quiet — без них на заставку лез бы вывод ядра).
+    runsh "grep -q splash /mnt/etc/default/grub || sed -i '/^GRUB_CMDLINE_LINUX_DEFAULT=/ s/\"\$/ splash\"/' /mnt/etc/default/grub"
+
+    run arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
+}
+
+do_snapper() {
+    # snapper при create-config создаёт собственный подтом /.snapshots, а у
+    # нас там уже смонтирован @snapshots. Поэтому: даём ему создать конфиг,
+    # убираем его подтом и возвращаем наш.
+    run umount /mnt/.snapshots
+    run rmdir /mnt/.snapshots
+    run arch-chroot /mnt snapper --no-dbus -c root create-config /
+    run arch-chroot /mnt btrfs subvolume delete /.snapshots
+    run mkdir -p /mnt/.snapshots
+    run mount -o "noatime,compress=zstd:3,subvol=@snapshots" "${CFG[root]}" /mnt/.snapshots
+    run arch-chroot /mnt chmod 750 /.snapshots
+
+    # Разумные пределы: иначе снапшоты незаметно съедают диск.
+    runsh "arch-chroot /mnt sed -i 's/^TIMELINE_LIMIT_HOURLY=.*/TIMELINE_LIMIT_HOURLY=\"5\"/;s/^TIMELINE_LIMIT_DAILY=.*/TIMELINE_LIMIT_DAILY=\"7\"/;s/^TIMELINE_LIMIT_WEEKLY=.*/TIMELINE_LIMIT_WEEKLY=\"2\"/;s/^TIMELINE_LIMIT_MONTHLY=.*/TIMELINE_LIMIT_MONTHLY=\"0\"/;s/^TIMELINE_LIMIT_YEARLY=.*/TIMELINE_LIMIT_YEARLY=\"0\"/' /etc/snapper/configs/root"
+
+    # Пункты отката в меню GRUB появляются после этого.
+    run arch-chroot /mnt grub-mkconfig -o /boot/grub/grub.cfg
+}
+
+do_services() {
+    # Набор сервисов задан пресетами из luna-base и luna-desktop,
+    # preset-all их и применяет — вместо россыпи systemctl enable.
+    run arch-chroot /mnt systemctl preset-all
+}
+
+install_all() {
+    rm -f "$FAILMARK"
+    step 5  "Partitioning ${CFG[disk]}"
+    do_partition
+    step 15 "Creating filesystems"
+    do_format
+    step 22 "Mounting subvolumes"
+    do_mount
+    step 30 "Installing packages. This is the long part."
+    do_pacstrap
+    step 70 "Configuring the system"
+    do_configure
+    step 85 "Installing the bootloader"
+    do_bootloader
+    step 92 "Setting up snapshots"
+    do_snapper
+    step 97 "Enabling services"
+    do_services
+    step 100 "Done"
+    sleep 1
+}
+
+#---------------------------------------------------------------------------
+# Главная последовательность
+#---------------------------------------------------------------------------
+
+main() {
+    require_root
+    : > "$LOG"
+    log "luna-install started"
+
+    screen_welcome
+    screen_keymap
+    loadkeys "${CFG[keymap]%%,*}" 2>/dev/null || true
+    screen_timezone
+    screen_disk
+    screen_scheme
+    [[ ${CFG[scheme]} == manual ]] && screen_manual_partitions
+    screen_hostname
+    screen_user
+    screen_kernel
+    screen_profile
+    screen_summary
+
+    install_all | dialog --backtitle "$BACKTITLE" --title "Installing Luna" \
+        --gauge "\nPreparing..." 10 70 0
+
+    if [[ -f $FAILMARK ]]; then
+        local what; what=$(cat "$FAILMARK")
+        d --title "Installation failed" --msgbox "\n\
+The step below did not finish:\n\n  ${what}\n\n\
+The full log is at ${LOG}\n\
+Nothing was changed after that point." 14 68
+        clear
+        echo "Installation failed. See $LOG"
+        tail -n 20 "$LOG"
+        exit 1
+    fi
+
+    d --title "Installation complete" --yes-label "Reboot" --no-label "Stay here" --yesno "\n\
+Luna Linux is installed on ${CFG[disk]}.\n\n\
+On the next boot you will be greeted by the login screen.\n\
+Log in as ${CFG[user]}.\n\n\
+Remove the installation medium before rebooting.\n\n\
+Reboot now?" 16 66
+
+    if [[ $? -eq 0 ]]; then
+        clear
+        umount -R /mnt 2>/dev/null || true
+        systemctl reboot
+    else
+        clear
+        echo "Luna is installed. The target is still mounted at /mnt."
+        echo "Log: $LOG"
+    fi
+}
+
+main "$@"

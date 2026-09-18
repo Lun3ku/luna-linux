@@ -1,0 +1,22 @@
+# Дефолтные сервисы пользовательского сеанса Luna Linux.
+#
+# Работает благодаря uwsm: он поднимает сеанс так, что systemd доходит до
+# graphical-session.target, к которому привязаны юниты ниже. Поэтому панель
+# и уведомления не запускаются из конфига Hyprland — их ведёт systemd и
+# перезапускает при падении.
+#
+# Пресет применяется командой systemctl --user preset-all. На случай, если
+# её никто не выполнял, пакет дополнительно кладёт симлинки в
+# /usr/lib/systemd/user/graphical-session.target.wants — тогда набор
+# работает сразу и у любого пользователя.
+enable waybar.service
+enable mako.service
+# Обои ставит swaybg через luna-wallpaper, а не hyprpaper:
+# тот падает без работающего EGL, то есть в любой виртуалке.
+enable luna-wallpaper.service
+enable hypridle.service
+enable hyprpolkitagent.service
+enable cliphist.service
+# blueman-applet намеренно не включён: без bluetooth-адаптера юнит просто
+# падает и портит счётчик упавших сервисов на панели. Кому нужен апплет —
+# systemctl --user enable --now blueman-applet.service

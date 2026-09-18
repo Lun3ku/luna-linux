@@ -1,0 +1,138 @@
+// Панель Luna Linux.
+//
+// Иконки записаны как JSON-escape \uXXXX, а не живыми символами. Это не
+// прихоть: глифы Nerd Font живут в приватной области Unicode и легко
+// теряются при передаче файла через инструменты и редакторы — один раз
+// они уже молча исчезли, и панель осталась без иконок. В виде escape
+// файл остаётся чистым ASCII, а декодирует их парсер JSON.
+//
+// Каждый код проверен командой fc-match ":charset=<код>": иконки
+// подставляются из Symbols Nerd Font Mono, и это ожидаемо — основной
+// шрифт у нас обычный JetBrains Mono, см. комментарий в depends.txt.
+//
+// Имена модулей сверены по man-страницам waybar 0.15.
+{
+    "layer": "top",
+    "position": "top",
+    "height": 36,
+    "margin-top": 6,
+    "margin-left": 10,
+    "margin-right": 10,
+    "spacing": 6,
+
+    "modules-left": ["hyprland/workspaces", "hyprland/submap"],
+    "modules-center": ["hyprland/window"],
+    "modules-right": [
+        "privacy",
+        "systemd-failed-units",
+        "wireplumber",
+        "network",
+        "bluetooth",
+        "battery",
+        "clock",
+        "tray"
+    ],
+
+    // Номера рабочих столов, а не иконки: по кружку не понять ни какой стол
+    // активен, ни сколько их всего. persistent-workspaces держит пять слотов
+    // постоянно, поэтому панель не скачет при появлении нового стола.
+    // sort-by именно "number": параметра sort-by-number не существует,
+    // waybar молча игнорирует его.
+    "hyprland/workspaces": {
+        "format": "{id}",
+        "on-click": "activate",
+        "sort-by": "number",
+        "persistent-workspaces": { "*": 5 }
+    },
+
+    "hyprland/submap": {
+        "format": "{}",
+        "tooltip": false
+    },
+
+    "hyprland/window": {
+        "format": "{title}",
+        "max-length": 60,
+        "separate-outputs": true,
+        "rewrite": { "": "Luna" }
+    },
+
+    // Показывает, когда что-то пишет звук или записывает экран.
+    // Мелочь, которая экономит много неловкости.
+    "privacy": {
+        "icon-spacing": 6,
+        "icon-size": 13,
+        "modules": [
+            { "type": "screenshare" },
+            { "type": "audio-in" }
+        ]
+    },
+
+    // Если сервис упал, это видно сразу, а не через неделю.
+    "systemd-failed-units": {
+        "format": "\uf071 {nr_failed}",
+        "format-ok": "",
+        "system": true,
+        "user": true
+    },
+
+    "wireplumber": {
+        "format": "{icon} {volume}%",
+        "format-muted": "\uf026 —",
+        "format-icons": ["\uf026", "\uf027", "\uf028"],
+        "on-click": "pavucontrol",
+        "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+        "scroll-step": 5
+    },
+
+    "network": {
+        "format-wifi": "\uf1eb {signalStrength}%",
+        "format-ethernet": "\uf0ac",
+        "format-disconnected": "\uf127",
+        "tooltip-format-wifi": "{essid}  {ipaddr}",
+        "tooltip-format-ethernet": "{ifname}  {ipaddr}",
+        "tooltip-format-disconnected": "No network",
+        "on-click": "kitty -e nmtui"
+    },
+
+    "bluetooth": {
+        "format": "\uf294",
+        "format-disabled": "",
+        "format-connected": "\uf294 {num_connections}",
+        "tooltip-format-connected": "{device_enumerate}",
+        "on-click": "blueman-manager"
+    },
+
+    "battery": {
+        "states": { "warning": 25, "critical": 10 },
+        "format": "{icon} {capacity}%",
+        "format-charging": "\uf0e7 {capacity}%",
+        "format-plugged": "\uf1e6 {capacity}%",
+        "format-icons": ["\uf244", "\uf243", "\uf242", "\uf241", "\uf240"],
+        "tooltip-format": "{timeTo}"
+    },
+
+    // 12-часовой формат по умолчанию.
+    //
+    // Параметр locale здесь НЕ указан, и это осознанно. Попытка привязать
+    // модуль к "en_US.UTF-8" полностью отключила часы в системе, где эта
+    // локаль не сгенерирована:
+    //     module clock: Disabling module "clock",
+    //     locale::facet::_S_create_c_locale name not valid
+    // Локаль вместо этого генерируется пакетом luna-release, а %p (AM/PM)
+    // корректно работает и в ней, и в запасной C-локали.
+    "clock": {
+        "format": "\uf017 {:%I:%M %p}",
+        "format-alt": "{:%d %B, %A}",
+        "tooltip-format": "<tt>{calendar}</tt>",
+        "calendar": {
+            "mode": "month",
+            "format": { "today": "<span color='#b4a0ff'><b>{}</b></span>" }
+        }
+    },
+
+    "tray": {
+        "icon-size": 16,
+        "spacing": 8
+    }
+}

@@ -1,0 +1,28 @@
+# Maintainer: Luna Linux
+pkgname=luna-installer
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Установщик Luna Linux с текстовым интерфейсом"
+arch=('any')
+url="https://github.com/luna-linux"
+license=('GPL-3.0-or-later')
+
+depends=($(grep -vE '^[[:space:]]*(#|$)' "$startdir/depends.txt" | awk '{print $1}'))
+
+source=('luna-install'
+        'luna-install.desktop'
+        'dialogrc')
+sha256sums=('SKIP' 'SKIP' 'SKIP')
+
+package() {
+  install -Dm755 "$srcdir/luna-install" "$pkgdir/usr/bin/luna-install"
+
+  # Ярлык нужен, чтобы установщик находился через лончер (Super+R),
+  # а не только по памяти о имени команды.
+  install -Dm644 "$srcdir/luna-install.desktop" \
+    "$pkgdir/usr/share/applications/luna-install.desktop"
+
+  # Палитра dialog: без неё установщик выглядит стандартным сине-голубым
+  # окном, не имеющим ничего общего с остальной системой.
+  install -Dm644 "$srcdir/dialogrc" "$pkgdir/usr/share/luna/dialogrc"
+}

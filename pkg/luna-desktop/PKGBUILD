@@ -1,0 +1,83 @@
+# Maintainer: Luna Linux
+pkgname=luna-desktop
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Рабочий стол Luna Linux на Hyprland с готовыми настройками"
+arch=('any')
+url="https://github.com/luna-linux"
+license=('GPL-3.0-or-later')
+
+depends=($(grep -vE '^[[:space:]]*(#|$)' "$startdir/depends.txt" | awk '{print $1}'))
+
+# Конфиг экрана входа лежит в /etc и его правят руками — помечаем как
+# backup, иначе обновление пакета затрёт изменения.
+backup=('etc/greetd/luna.toml')
+
+source=('hyprland.lua'
+        'luna-session'
+        'luna-wallpaper'
+        'luna-wallpaper.service'
+        'hypridle.conf'
+        'hyprlock.conf'
+        'hyprpaper.conf'
+        'waybar-config.jsonc'
+        'waybar-style.css'
+        'mako-config'
+        'rofi-luna.rasi'
+        'kitty.conf'
+        'luna.png'
+        '90-luna-user.preset'
+        '90-luna-desktop.preset'
+        'greetd-luna.toml'
+        'greetd-override.conf')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP'
+            'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+package() {
+  # Конфиги пользователя — в /etc/skel. Новый пользователь получает копию,
+  # дальше файлы его собственные и обновление пакета их не перезапишет.
+  local skel="$pkgdir/etc/skel/.config"
+
+  install -Dm644 "$srcdir/hyprland.lua"  "$skel/hypr/hyprland.lua"
+  install -Dm644 "$srcdir/hypridle.conf" "$skel/hypr/hypridle.conf"
+  install -Dm644 "$srcdir/hyprlock.conf" "$skel/hypr/hyprlock.conf"
+  install -Dm644 "$srcdir/hyprpaper.conf" "$skel/hypr/hyprpaper.conf"
+
+  install -Dm644 "$srcdir/waybar-config.jsonc" "$skel/waybar/config.jsonc"
+  install -Dm644 "$srcdir/waybar-style.css"    "$skel/waybar/style.css"
+  install -Dm644 "$srcdir/mako-config"         "$skel/mako/config"
+  install -Dm644 "$srcdir/rofi-luna.rasi"      "$skel/rofi/config.rasi"
+  install -Dm644 "$srcdir/kitty.conf"          "$skel/kitty/kitty.conf"
+
+  install -Dm644 "$srcdir/luna.png" "$pkgdir/usr/share/backgrounds/luna/luna.png"
+
+  # Обои: скрипт и юнит. Путь к картинке можно переопределить файлом
+  # ~/.config/luna/wallpaper, см. сам скрипт.
+  install -Dm755 "$srcdir/luna-wallpaper" "$pkgdir/usr/bin/luna-wallpaper"
+  # Запуск сеанса всегда через uwsm — см. комментарий в самом скрипте.
+  install -Dm755 "$srcdir/luna-session" "$pkgdir/usr/bin/luna-session"
+  install -Dm644 "$srcdir/luna-wallpaper.service"     "$pkgdir/usr/lib/systemd/user/luna-wallpaper.service"
+
+  # Пресеты: системный включает экран входа, пользовательский — панель и
+  # прочие юниты сеанса.
+  install -Dm644 "$srcdir/90-luna-desktop.preset" \
+    "$pkgdir/usr/lib/systemd/system-preset/90-luna-desktop.preset"
+  install -Dm644 "$srcdir/90-luna-user.preset" \
+    "$pkgdir/usr/lib/systemd/user-preset/90-luna-user.preset"
+
+  # Экран входа: свой конфиг плюс drop-in, показывающий на него greetd.
+  install -Dm644 "$srcdir/greetd-luna.toml" "$pkgdir/etc/greetd/luna.toml"
+  install -Dm644 "$srcdir/greetd-override.conf" \
+    "$pkgdir/usr/lib/systemd/system/greetd.service.d/10-luna.conf"
+
+  # Пресет пользователя применяется только командой systemctl --user
+  # preset-all, которую никто не обязан выполнять. Поэтому дополнительно
+  # кладём симлинки: systemd читает .wants и из /usr/lib, так набор
+  # работает сразу и у каждого пользователя.
+  local wants="$pkgdir/usr/lib/systemd/user/graphical-session.target.wants"
+  install -d "$wants"
+  local unit
+  for unit in waybar mako luna-wallpaper hypridle hyprpolkitagent cliphist; do
+    ln -s "../${unit}.service" "$wants/${unit}.service"
+  done
+}

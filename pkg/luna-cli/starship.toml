@@ -1,0 +1,28 @@
+# Приглашение Luna Linux: две строки, чтобы длинные пути не съедали
+# место под команду, и ничего лишнего.
+add_newline = true
+
+format = """
+$directory$git_branch$git_status$cmd_duration
+$character"""
+
+[character]
+success_symbol = "[❯](bold #b4a0ff)"
+error_symbol = "[❯](bold red)"
+
+[directory]
+style = "bold cyan"
+truncation_length = 4
+truncate_to_repo = false
+
+[git_branch]
+symbol = " "
+style = "bold purple"
+
+[git_status]
+style = "bold yellow"
+
+[cmd_duration]
+min_time = 2000
+format = " [$duration]($style)"
+style = "dimmed white"

@@ -1,0 +1,33 @@
+# Maintainer: Luna Linux
+pkgname=luna-cli
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Оболочка и утилиты командной строки Luna Linux с готовыми настройками"
+arch=('any')
+url="https://github.com/luna-linux"
+license=('GPL-3.0-or-later')
+
+# Список зависимостей держим отдельным файлом: его проверяет
+# scripts/check-packages.sh, и в нём можно комментировать каждую строку.
+depends=($(grep -vE '^[[:space:]]*(#|$)' "$startdir/depends.txt" | awk '{print $1}'))
+
+source=('config.fish'
+        'starship.toml'
+        'fastfetch.jsonc'
+        'luna-logo.txt')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+package() {
+  # Конфиги кладём в /etc/skel: их получит каждый новый пользователь, а
+  # дальше они его собственные — обновления пакета их не перезапишут.
+  # Оболочкой по умолчанию fish делает установщик (useradd -s /usr/bin/fish);
+  # менять чужие учётные записи из пакета неправильно.
+  install -Dm644 "$srcdir/config.fish"   "$pkgdir/etc/skel/.config/fish/config.fish"
+  install -Dm644 "$srcdir/starship.toml" "$pkgdir/etc/skel/.config/starship.toml"
+  install -Dm644 "$srcdir/fastfetch.jsonc" "$pkgdir/etc/skel/.config/fastfetch/config.jsonc"
+
+  # Логотип лежит вне /etc/skel: он общий и правится не пользователем, а
+  # дистрибутивом. Цвета в нём заданы метками $1 и $2, поэтому файл
+  # остаётся обычным текстом без управляющих последовательностей.
+  install -Dm644 "$srcdir/luna-logo.txt" "$pkgdir/usr/share/luna/logo.txt"
+}

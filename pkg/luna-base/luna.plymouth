@@ -1,0 +1,51 @@
+# Загрузочная заставка Luna Linux.
+#
+# Построена на штатном модуле two-step — том же, что у темы spinner.
+# Кадры индикатора и вспомогательные картинки не дублируются, а берутся
+# из spinner символическими ссылками: рисовать свой белый индикатор ради
+# тех же тридцати кадров смысла нет, а на тёмном фоне он смотрится ровно.
+# Своё здесь — водяной знак с луной и цвета.
+
+[Plymouth Theme]
+Name=Luna
+Description=Луна над ночным градиентом
+ModuleName=two-step
+
+[two-step]
+ImageDir=/usr/share/plymouth/themes/luna
+
+# Фон повторяет градиент обоев: сверху почти чёрный, к низу чуть светлее.
+BackgroundStartColor=0x0b0a12
+BackgroundEndColor=0x1c1a28
+
+# Полоса прогресса в акцентном лавандовом.
+ProgressBarBackgroundColor=0x2a2739
+ProgressBarForegroundColor=0xb4a0ff
+
+Font=Adwaita Sans 12
+TitleFont=Adwaita Sans Light 30
+MonospaceFont=Adwaita Mono 12
+
+# Индикатор чуть ниже центра, водяной знак — по центру.
+HorizontalAlignment=.5
+VerticalAlignment=.72
+WatermarkHorizontalAlignment=.5
+WatermarkVerticalAlignment=.42
+
+DialogHorizontalAlignment=.5
+DialogVerticalAlignment=.382
+TitleHorizontalAlignment=.5
+TitleVerticalAlignment=.382
+
+Transition=none
+TransitionDuration=0.0
+MessageBelowAnimation=true
+
+[boot-up]
+UseEndAnimation=false
+
+[shutdown]
+UseEndAnimation=false
+
+[reboot]
+UseEndAnimation=false

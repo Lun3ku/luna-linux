@@ -1,0 +1,8 @@
+# luna-installer — TUI-установщик.
+dialog               # псевдо-GUI в терминале
+arch-install-scripts # pacstrap, genfstab, arch-chroot
+gptfdisk             # sgdisk для автоматической разметки
+parted
+dosfstools           # mkfs.fat для ESP
+btrfs-progs
+util-linux           # cfdisk, lsblk

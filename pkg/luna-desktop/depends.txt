@@ -1,0 +1,79 @@
+# luna-desktop — Hyprland и всё, без чего он не рабочий стол, а голый WM.
+luna-release                  # брендинг; base-devel сюда не тянем
+
+# --- композитор и сеанс ---
+hyprland
+uwsm                          # запускает Hyprland как настоящий systemd-сеанс:
+                              # доводит дело до graphical-session.target, после
+                              # чего юниты ниже стартуют и перезапускаются сами
+xdg-desktop-portal-hyprland   # скриншеринг, файловые диалоги
+hyprpolkitagent               # запросы прав в графике
+hyprcursor
+
+# --- оболочка рабочего стола ---
+waybar                        # панель
+rofi-wayland                  # запуск программ, переключение окон, меню
+mako                          # уведомления
+swaybg                        # обои. Рисует через cairo и wl_shm, то есть
+                              # работает и без GPU. hyprpaper 0.8.4 в тех же
+                              # условиях падает с SIGSEGV — проверено
+hyprpaper                     # оставлен как альтернатива для тех, у кого
+                              # есть GPU и нужен IPC-контроль обоев
+hyprlock                      # блокировка экрана
+hypridle                      # автоблокировка и гашение экрана по простою
+hyprshutdown                  # меню выключения
+hyprsunset                    # ночной режим, тёплые цвета вечером
+hyprpicker                    # пипетка цвета
+
+# --- буфер обмена и скриншоты ---
+wl-clipboard
+cliphist                      # история буфера обмена
+grim                          # снимок экрана
+slurp                         # выбор области
+swappy                        # разметка снимка
+
+# --- вход в систему ---
+greetd
+greetd-tuigreet               # экран входа в одной эстетике с установщиком
+
+# --- приложения ---
+kitty                         # терминал
+thunar                        # файловый менеджер
+thunar-volman                 # автомонтирование съёмных носителей
+tumbler                       # миниатюры файлов
+gvfs                          # доступ к дискам и сети из файлового менеджера
+xdg-user-dirs
+polkit
+
+# --- звук ---
+pipewire
+pipewire-pulse                # даёт интерфейс PulseAudio; сам pulseaudio
+                              # с ним конфликтует и ломает захват экрана
+pipewire-alsa
+wireplumber
+pavucontrol
+
+# --- сеть и bluetooth ---
+network-manager-applet
+bluez
+bluez-utils
+blueman
+
+# --- мелочи оборудования ---
+brightnessctl                 # яркость экрана
+playerctl                     # управление воспроизведением с клавиатуры
+
+# --- вид ---
+# Шрифт разделён намеренно. Пакет ttf-jetbrains-mono-nerd весит 232 МиБ:
+# в нём 96 файлов — все начертания всех вариантов. Обычный шрифт плюс
+# символьный дают ровно тот же результат за 10 МиБ: fontconfig сам берёт
+# иконки из Symbols Nerd Font Mono. Проверено на всех используемых глифах.
+ttf-jetbrains-mono            # основной моноширинный
+ttf-nerd-fonts-symbols-mono   # иконки для панели, подставляются автоматически
+noto-fonts
+noto-fonts-emoji
+noto-fonts-cjk
+papirus-icon-theme
+qt5-wayland
+qt6-wayland
+qt6ct

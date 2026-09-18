@@ -1,0 +1,16 @@
+[Unit]
+Description=Luna Linux wallpaper
+Documentation=man:swaybg(1)
+PartOf=graphical-session.target
+After=graphical-session.target
+# Без работающего Wayland-сеанса запускаться бессмысленно.
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/luna-wallpaper
+Restart=on-failure
+Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target

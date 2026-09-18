@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Водяной знак загрузочной заставки: луна со свечением, без текста.
+     На экране загрузки надпись не нужна — её уже показал загрузчик. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <defs>
+    <radialGradient id="g" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0"    stop-color="#b4a0ff" stop-opacity="0.5"/>
+      <stop offset="0.45" stop-color="#b4a0ff" stop-opacity="0.13"/>
+      <stop offset="1"    stop-color="#b4a0ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="100" cy="100" r="100" fill="url(#g)"/>
+  <circle cx="100" cy="100" r="34" fill="#f2eeff"/>
+</svg>

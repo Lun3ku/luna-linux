@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Install Luna Linux
+GenericName=System Installer
+Comment=Install Luna onto this computer
+Exec=kitty --title "Luna Installer" -e sudo luna-install
+Icon=system-software-install
+Terminal=false
+Categories=System;Settings;
+Keywords=install;setup;luna;

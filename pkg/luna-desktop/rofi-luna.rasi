@@ -1,0 +1,64 @@
+/* Меню Luna Linux. Используется и как лончер (Super+R), и как
+ * переключатель окон (Super+Tab), и как история буфера (Super+Shift+V). */
+
+* {
+    base:     #12111a;
+    surface:  #1b1926;
+    overlay:  #2a2739;
+    text:     #e8e4f4;
+    subtext:  #9a93b3;
+    accent:   #b4a0ff;
+
+    background-color: transparent;
+    text-color:       @text;
+    font:             "JetBrains Mono 12";
+}
+
+configuration {
+    show-icons:     true;
+    icon-theme:     "Papirus-Dark";
+    display-drun:   "Run";
+    display-window: "Windows";
+    drun-display-format: "{name}";
+    kb-cancel:      "Escape";
+}
+
+window {
+    width:            42%;
+    border-radius:    16px;
+    background-color: @surface;
+    padding:          16px;
+}
+
+inputbar {
+    children:         [ prompt, entry ];
+    padding:          10px 14px;
+    spacing:          10px;
+    border-radius:    12px;
+    background-color: @overlay;
+    margin:           0 0 12px 0;
+}
+
+prompt { text-color: @accent; }
+entry  { placeholder: "Search"; placeholder-color: @subtext; }
+
+listview {
+    lines:        9;
+    scrollbar:    false;
+    spacing:      4px;
+    fixed-height: false;
+}
+
+element {
+    padding:       9px 12px;
+    border-radius: 10px;
+    spacing:       10px;
+}
+
+element selected {
+    background-color: @accent;
+    text-color:       @base;
+}
+
+element-icon { size: 22px; }
+element-text { vertical-align: 0.5; }

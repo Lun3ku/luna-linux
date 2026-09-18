@@ -1,0 +1,27 @@
+# luna-cli — вменяемый терминал из коробки.
+fish                 # оболочка с автодополнением без настройки
+starship             # приглашение
+eza                  # ls
+bat                  # cat с подсветкой
+ripgrep              # grep
+fd                   # find
+fzf                  # интерактивный поиск
+zoxide               # умный cd
+git-delta            # diff
+btop                 # монитор процессов
+yazi                 # файловый менеджер в терминале
+fastfetch            # информация о системе
+tealdeer             # tldr — примеры вместо man
+dust                 # du
+duf                  # df
+jq
+tree
+man-db
+man-pages
+neovim
+git
+wget
+curl
+unzip
+p7zip
+rsync

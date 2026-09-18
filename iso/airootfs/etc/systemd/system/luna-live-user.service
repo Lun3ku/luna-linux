@@ -1,0 +1,14 @@
+[Unit]
+Description=Create Luna live user
+ConditionPathExists=/run/archiso
+After=systemd-sysusers.service systemd-tmpfiles-setup.service
+Before=greetd.service
+Wants=greetd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/luna-live-user
+
+[Install]
+WantedBy=multi-user.target

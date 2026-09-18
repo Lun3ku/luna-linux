@@ -1,0 +1,47 @@
+# /etc/os-release — это симлинк, который не принадлежит ни одному пакету
+# (владелец /usr/lib/os-release — пакет filesystem). Поэтому свой файл
+# кладём рядом как os-release-luna и переставляем симлинк — так pacman
+# не ругается на конфликт файлов.
+#
+# Заодно это чинит приветствие при входе: /etc/issue содержит
+# \S{PRETTY_NAME}, то есть берёт имя системы прямо из os-release.
+
+_link_os_release() {
+  ln -sfn /usr/lib/os-release-luna /etc/os-release
+}
+
+# Luna англоязычная, и ей нужна сгенерированная en_US.UTF-8.
+#
+# Без неё система остаётся с одними C/C.utf8/POSIX, и это ломает больше,
+# чем кажется: модуль часов waybar отключается с ошибкой
+# «locale::facet::_S_create_c_locale name not valid», ломаются сортировка
+# и форматирование дат.
+#
+# Правка /etc/locale.gen — единственный надёжный путь: механизма drop-in
+# у glibc нет, а локали, созданные напрямую через localedef, затираются
+# при следующем locale-gen. Файл помечен как backup у glibc, поэтому наша
+# правка переживает обновления.
+_ensure_locale() {
+  if locale -a 2>/dev/null | grep -qix 'en_US.utf8'; then
+    return
+  fi
+  if [ -f /etc/locale.gen ]; then
+    sed -i 's/^#\(en_US\.UTF-8 UTF-8\)/\1/' /etc/locale.gen
+    locale-gen >/dev/null 2>&1 || true
+  fi
+}
+
+post_install() {
+  _link_os_release
+  _ensure_locale
+}
+
+post_upgrade() {
+  _link_os_release
+  _ensure_locale
+}
+
+pre_remove() {
+  # Возвращаем штатный симлинк Arch, иначе система останется без os-release.
+  ln -sfn ../usr/lib/os-release /etc/os-release
+}

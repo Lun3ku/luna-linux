@@ -1,0 +1,26 @@
+# Наполняет связку ключей pacman нашим ключом. Тот же приём, что у
+# archlinux-keyring: пакет кладёт публичный ключ и файл доверия в
+# /usr/share/pacman/keyrings, а install-скрипт говорит pacman-key их взять.
+
+post_install() {
+  if usr/bin/pacman-key -l >/dev/null 2>&1; then
+    usr/bin/pacman-key --populate luna
+  fi
+}
+
+post_upgrade() {
+  if usr/bin/pacman-key -l >/dev/null 2>&1; then
+    usr/bin/pacman-key --populate luna
+  fi
+}
+
+pre_remove() {
+  # Убираем ключ из связки: иначе останется доверие к ключу, файлов
+  # которого в системе уже нет.
+  if usr/bin/pacman-key -l >/dev/null 2>&1; then
+    local fpr
+    while IFS=: read -r fpr _; do
+      [ -n "$fpr" ] && usr/bin/pacman-key --delete "$fpr" 2>/dev/null
+    done < usr/share/pacman/keyrings/luna-trusted
+  fi
+}

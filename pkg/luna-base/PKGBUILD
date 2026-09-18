@@ -1,0 +1,58 @@
+# Maintainer: Luna Linux
+pkgname=luna-base
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Базовая система и настройки надёжности Luna Linux"
+arch=('any')
+url="https://github.com/luna-linux"
+license=('GPL-3.0-or-later')
+
+# Список зависимостей держим в отдельном файле: его проверяет
+# scripts/check-packages.sh, и в нём можно писать комментарии к каждой строке.
+depends=($(grep -vE '^[[:space:]]*(#|$)' "$startdir/depends.txt" | awk '{print $1}'))
+
+install="$pkgname.install"
+source=('grub-background.png'
+        'plymouth-watermark.png'
+        'luna.plymouth'
+        'zram-generator.conf'
+        '99-luna.conf'
+        '90-luna.preset'
+        'oomd-root-slice.conf'
+        'oomd-user-slice.conf'
+        'reflector-override.conf')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+package() {
+  # makepkg не поддерживает подкаталоги в локальных source: он отрезает путь
+  # и ищет файл рядом с PKGBUILD. Поэтому файлы лежат здесь же, а в $srcdir
+  # makepkg делает на них симлинки под теми же именами.
+
+  # zram: конфиг в /usr/lib, чтобы пользователь мог переопределить его
+  # в /etc — генератор ищет в /usr/lib, /usr/local/lib, /etc и /run.
+  install -Dm644 "$srcdir/zram-generator.conf" "$pkgdir/usr/lib/systemd/zram-generator.conf"
+
+  # Фон меню загрузчика. GRUB подключает его через GRUB_BACKGROUND в
+  # /etc/default/grub — это делает установщик, потому что drop-in секций
+  # у того файла нет.
+  install -Dm644 "$srcdir/grub-background.png" "$pkgdir/usr/share/luna/grub-background.png"
+
+  # Загрузочная заставка. Кадры индикатора не дублируем — ссылаемся на
+  # тему spinner из пакета plymouth: тридцать одинаковых белых картинок
+  # в своём пакете смысла не имеют, а на тёмном фоне они смотрятся ровно.
+  local theme="$pkgdir/usr/share/plymouth/themes/luna"
+  install -Dm644 "$srcdir/luna.plymouth" "$theme/luna.plymouth"
+  install -Dm644 "$srcdir/plymouth-watermark.png" "$theme/watermark.png"
+  local i
+  for i in $(seq -w 1 30); do
+    ln -s "../spinner/throbber-00$i.png" "$theme/throbber-00$i.png"
+  done
+
+
+  install -Dm644 "$srcdir/99-luna.conf"   "$pkgdir/usr/lib/sysctl.d/99-luna.conf"
+  install -Dm644 "$srcdir/90-luna.preset" "$pkgdir/usr/lib/systemd/system-preset/90-luna.preset"
+
+  install -Dm644 "$srcdir/oomd-root-slice.conf"     "$pkgdir/usr/lib/systemd/system/-.slice.d/10-luna-oomd.conf"
+  install -Dm644 "$srcdir/oomd-user-slice.conf"     "$pkgdir/usr/lib/systemd/system/user@.slice.d/10-luna-oomd.conf"
+  install -Dm644 "$srcdir/reflector-override.conf"     "$pkgdir/usr/lib/systemd/system/reflector.service.d/10-luna.conf"
+}

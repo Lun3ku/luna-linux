@@ -1,0 +1,27 @@
+# Уведомления Luna Linux. Палитра совпадает с панелью и Hyprland.
+font=JetBrains Mono 11
+background-color=#1b1926f2
+text-color=#e8e4f4
+border-color=#2a2739
+progress-color=over #b4a0ff
+border-size=2
+border-radius=12
+padding=12
+margin=10
+width=380
+height=140
+default-timeout=6000
+icons=1
+max-icon-size=48
+layer=overlay
+anchor=top-right
+
+[urgency=low]
+text-color=#9a93b3
+default-timeout=4000
+
+[urgency=high]
+border-color=#ff92a8
+text-color=#ff92a8
+# Важное не должно исчезать само.
+default-timeout=0
