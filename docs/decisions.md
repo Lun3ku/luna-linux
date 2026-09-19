@@ -1515,3 +1515,96 @@ it during installation, so installing does not depend on the site being
 reachable. It is no longer copied onto the disk - that copy could never change,
 and offering pacman a second, permanently stale source is worse than offering
 it none.
+
+## Luna had no graphics drivers at all
+
+Searching the whole repository for `nvidia`, `mesa`, `vulkan` or `amdgpu`
+returned nothing. Not a decision anybody had made - a gap nobody had looked
+for, and one that was invisible on the only machine Luna had ever been
+installed on, because mesa arrives as a dependency of the Wayland stack and
+Intel graphics need nothing else.
+
+It stops being invisible on NVIDIA. Hyprland on nouveau is slow on older cards
+and, on new ones, often does not start at all. The question only came up
+because the next machine to be installed on has an NVIDIA card in it; had it
+not, the first sign would have been a black screen after a fresh install.
+
+### Choosing the driver from the card rather than from a guess
+
+NVIDIA's own position, as the Hyprland wiki records it, is that the open
+kernel modules are **required** from the 50xx series on, **recommended** for
+Turing and Ampere, and **not supported at all** on anything older. So the
+choice cannot be made once for everybody.
+
+The only thing readable before the driver is loaded is the PCI device id, and
+ids from Turing onwards start at `0x1e00`. Above that the installer picks
+`nvidia-open-dkms`, below it `nvidia-dkms`. The DKMS variants rather than the
+prebuilt ones, because the installer offers a choice of two kernels and the
+matching headers are already installed for whichever one was picked.
+
+### Reading sysfs, not lspci
+
+The obvious way to find the card is `lspci`. It is also the wrong way here:
+`pciutils` is not on the installation medium. A check that needs a package
+nobody installed is a check that answers "no NVIDIA here" on every machine in
+the world - it would never have failed loudly, it would simply never have
+found anything.
+
+So both helpers walk `/sys/bus/pci/devices/*` and read `vendor`, `class` and
+`device` directly. They take the directory from a variable, which exists for
+one reason: to point them at a tree of fabricated devices and check what they
+say. Eight cases, including two that matter:
+
+- **A hybrid laptop**, where the NVIDIA card appears as class `0x0302`, a 3D
+  controller, rather than `0x0300`. Matching only VGA controllers would miss
+  every laptop.
+- **The vendor-id trap.** An NVIDIA card also exposes an HDMI audio function
+  on the same PCI vendor id, `0x10de`. Checking the vendor alone would report
+  a graphics card on a machine whose graphics card had been removed.
+
+### Early KMS against hibernation
+
+The wiki's instructions say to load the NVIDIA modules from the initramfs, and
+then warn, in the same section, that doing so is known to stop resume from
+hibernation working - the machine boots instead of resuming.
+
+Luna offers hibernation in the installer. So the two cannot both be applied
+blindly, and the installer no longer tries: early KMS is added unless
+hibernation was chosen, and when it is skipped the log says why. A cosmetic
+improvement loses to a feature the user asked for by name.
+
+### Variables that must not be set on other machines
+
+The wiki asks for `LIBVA_DRIVER_NAME=nvidia` and
+`__GLX_VENDOR_LIBRARY_NAME=nvidia` in the Hyprland config. But `hyprland.lua`
+ships to every machine through `/etc/skel`, and on an Intel one that first
+variable points libva at a driver that is not installed and takes hardware
+video decoding away.
+
+The config therefore detects rather than assumes. `/sys/module/nvidia/version`
+exists only while the proprietary driver is loaded, which is exactly the
+condition those variables belong to - on nouveau they are wrong as well.
+
+### What could not be tested, and the way round it
+
+None of this can be verified here. QEMU has no NVIDIA card, so the screen
+never appears, the packages are never installed and the modules are never
+loaded. What was tested is everything that does not need the hardware: the
+detection against fabricated devices, the `mkinitcpio` edit together with the
+guard that catches it doing nothing, and that all five package names still
+exist in the repositories.
+
+The remaining risk is the first boot of the installation medium itself: if
+nouveau cannot drive the card, there is no desktop and therefore no installer.
+That turned out to have an answer already, and it was checked rather than
+assumed:
+
+```
+Ctrl+Alt+F2  ->  luna login: root   (no password on the live medium)
+                 # luna-install
+```
+
+greetd occupies tty1 only, systemd spawns a getty on any other console on
+demand, and the live root account has an empty password - so the installer is
+reachable from a text console even with the graphical session dead. Verified
+on the built image, not deduced.
