@@ -5,6 +5,13 @@
 # kept alongside the config. A cheat sheet maintained by hand drifts from
 # reality the first time somebody edits a binding and forgets the sheet; this
 # one cannot, because it asks the running compositor what is actually bound.
+#
+# What each binding does comes from its description. That is not a nicety: a
+# Lua config reports its dispatcher to hyprctl as "__lua" and its argument as
+# the number of an internal callback, so without a description a line here
+# reads "Super+1  __lua 56". hyprland.lua gives every binding one. Anything
+# that has none falls back to the dispatcher, which is what a legacy
+# hyprland.conf reports and is readable enough.
 set -euo pipefail
 
 mod_name() {
@@ -19,10 +26,16 @@ mod_name() {
 }
 
 list() {
-    local mods key dispatcher arg
-    hyprctl binds -j | jq -r '.[] | [.modmask, .key, .dispatcher, .arg] | @tsv' |
-    while IFS=$'\t' read -r mods key dispatcher arg; do
-        printf '%-22s %s %s\n' "$(mod_name "$mods")${key}" "$dispatcher" "$arg"
+    local mods key what
+    hyprctl binds -j | jq -r '.[] | [
+        .modmask,
+        .key,
+        (if (.has_description // false)
+         then (.description | tostring)
+         else ((.dispatcher // "") + " " + (.arg // "")) end)
+    ] | @tsv' |
+    while IFS=$'\t' read -r mods key what; do
+        printf '%-22s %s\n' "$(mod_name "$mods")${key}" "$what"
     done | sort
 }
 

@@ -202,36 +202,43 @@ hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
 --------------------------------------------------------------------------
 local mod = "SUPER"
 
+-- Every binding carries a description. It is not decoration: a Lua config
+-- reports its dispatcher to hyprctl as "__lua" and its argument as the number
+-- of an internal callback, so without these the cheat sheet on Super+/ reads
+-- "Super+1  __lua 56" and tells nobody anything. With them it reads
+-- "Super+1  Workspace 1". Checked against hyprctl binds -j, which returns the
+-- description and sets has_description.
+
 -- Programs
-hl.bind(mod .. " + Return",    hl.dsp.exec_cmd(terminal))
-hl.bind(mod .. " + E",         hl.dsp.exec_cmd(fileManager))
-hl.bind(mod .. " + R",         hl.dsp.exec_cmd(launcher))
-hl.bind(mod .. " + Tab",       hl.dsp.exec_cmd(windowList))
-hl.bind(mod .. " + SHIFT + V", hl.dsp.exec_cmd(clipboard))
+hl.bind(mod .. " + Return",    hl.dsp.exec_cmd(terminal),    { description = "Terminal" })
+hl.bind(mod .. " + E",         hl.dsp.exec_cmd(fileManager), { description = "File manager" })
+hl.bind(mod .. " + R",         hl.dsp.exec_cmd(launcher),    { description = "Run a program" })
+hl.bind(mod .. " + Tab",       hl.dsp.exec_cmd(windowList),  { description = "Switch between windows" })
+hl.bind(mod .. " + SHIFT + V", hl.dsp.exec_cmd(clipboard),   { description = "Clipboard history" })
 
 -- Windows
-hl.bind(mod .. " + Q",         hl.dsp.window.close())
-hl.bind(mod .. " + F",         hl.dsp.window.fullscreen())
-hl.bind(mod .. " + V",         hl.dsp.window.float({ action = "toggle" }))
-hl.bind(mod .. " + C",         hl.dsp.window.center())
-hl.bind(mod .. " + P",         hl.dsp.window.pin())
-hl.bind(mod .. " + T",         hl.dsp.layout("togglesplit"))
+hl.bind(mod .. " + Q",         hl.dsp.window.close(),                     { description = "Close the window" })
+hl.bind(mod .. " + F",         hl.dsp.window.fullscreen(),                { description = "Fullscreen" })
+hl.bind(mod .. " + V",         hl.dsp.window.float({ action = "toggle" }), { description = "Float the window" })
+hl.bind(mod .. " + C",         hl.dsp.window.center(),                    { description = "Centre the window" })
+hl.bind(mod .. " + P",         hl.dsp.window.pin(),                       { description = "Pin above the rest" })
+hl.bind(mod .. " + T",         hl.dsp.layout("togglesplit"),              { description = "Split sideways or down" })
 
 -- Session
-hl.bind(mod .. " + L",         hl.dsp.exec_cmd("loginctl lock-session"))
-hl.bind(mod .. " + M",         hl.dsp.exec_cmd("hyprshutdown"))
+hl.bind(mod .. " + L",         hl.dsp.exec_cmd("loginctl lock-session"), { description = "Lock the screen" })
+hl.bind(mod .. " + M",         hl.dsp.exec_cmd("hyprshutdown"),          { description = "Shut down, restart, log out" })
 
 -- Screenshots
-hl.bind(mod .. " + SHIFT + S", hl.dsp.exec_cmd(screenArea))
-hl.bind("Print",               hl.dsp.exec_cmd(screenFull))
-hl.bind(mod .. " + SHIFT + C", hl.dsp.exec_cmd("hyprpicker -a"))
+hl.bind(mod .. " + SHIFT + S", hl.dsp.exec_cmd(screenArea),        { description = "Screenshot a region" })
+hl.bind("Print",               hl.dsp.exec_cmd(screenFull),        { description = "Screenshot the whole screen" })
+hl.bind(mod .. " + SHIFT + C", hl.dsp.exec_cmd("hyprpicker -a"),   { description = "Pick a colour off the screen" })
 
 -- Tools
 -- Super+/ lists the key bindings, asking the running compositor rather
 -- than a cheat sheet kept by hand, so it cannot go stale.
 -- Super+N forces night mode on or off outside the evening schedule.
-hl.bind(mod .. " + slash", hl.dsp.exec_cmd("luna-keys"))
-hl.bind(mod .. " + N",     hl.dsp.exec_cmd("luna-night"))
+hl.bind(mod .. " + slash", hl.dsp.exec_cmd("luna-keys"),  { description = "These key bindings" })
+hl.bind(mod .. " + N",     hl.dsp.exec_cmd("luna-night"), { description = "Night mode on or off" })
 
 -- Focus: with the arrow keys and with the vim hjk layout.
 --
@@ -240,44 +247,48 @@ hl.bind(mod .. " + N",     hl.dsp.exec_cmd("luna-night"))
 -- Two bindings on one key is not a thing Hyprland resolves in any way
 -- worth relying on, and of the two, locking is the one that must not
 -- misfire. Focus to the right is still on Super+Right.
-hl.bind(mod .. " + left",  hl.dsp.focus({ direction = "left" }))
-hl.bind(mod .. " + right", hl.dsp.focus({ direction = "right" }))
-hl.bind(mod .. " + up",    hl.dsp.focus({ direction = "up" }))
-hl.bind(mod .. " + down",  hl.dsp.focus({ direction = "down" }))
-hl.bind(mod .. " + H",     hl.dsp.focus({ direction = "left" }))
-hl.bind(mod .. " + K",     hl.dsp.focus({ direction = "up" }))
-hl.bind(mod .. " + J",     hl.dsp.focus({ direction = "down" }))
+hl.bind(mod .. " + left",  hl.dsp.focus({ direction = "left" }),  { description = "Focus left" })
+hl.bind(mod .. " + right", hl.dsp.focus({ direction = "right" }), { description = "Focus right" })
+hl.bind(mod .. " + up",    hl.dsp.focus({ direction = "up" }),    { description = "Focus up" })
+hl.bind(mod .. " + down",  hl.dsp.focus({ direction = "down" }),  { description = "Focus down" })
+hl.bind(mod .. " + H",     hl.dsp.focus({ direction = "left" }),  { description = "Focus left (vim)" })
+hl.bind(mod .. " + K",     hl.dsp.focus({ direction = "up" }),    { description = "Focus up (vim)" })
+hl.bind(mod .. " + J",     hl.dsp.focus({ direction = "down" }),  { description = "Focus down (vim)" })
 
 -- Workspaces: Super+digit to switch, Super+Shift+digit to move a window there.
 for i = 1, 10 do
     local key = i % 10                      -- the tenth workspace lives on key 0
-    hl.bind(mod .. " + " .. key,         hl.dsp.focus({ workspace = i }))
-    hl.bind(mod .. " + SHIFT + " .. key, hl.dsp.window.move({ workspace = i }))
+    hl.bind(mod .. " + " .. key,         hl.dsp.focus({ workspace = i }),
+            { description = "Workspace " .. i })
+    hl.bind(mod .. " + SHIFT + " .. key, hl.dsp.window.move({ workspace = i }),
+            { description = "Move the window to workspace " .. i })
 end
 
 -- Switching workspaces with the mouse wheel
-hl.bind(mod .. " + mouse_down", hl.dsp.focus({ workspace = "e+1" }))
-hl.bind(mod .. " + mouse_up",   hl.dsp.focus({ workspace = "e-1" }))
+hl.bind(mod .. " + mouse_down", hl.dsp.focus({ workspace = "e+1" }), { description = "Next workspace" })
+hl.bind(mod .. " + mouse_up",   hl.dsp.focus({ workspace = "e-1" }), { description = "Previous workspace" })
 
 -- A separate "pocket" workspace, handy for a messenger or music
-hl.bind(mod .. " + S",             hl.dsp.workspace.toggle_special("magic"))
-hl.bind(mod .. " + SHIFT + Return", hl.dsp.window.move({ workspace = "special:magic" }))
+hl.bind(mod .. " + S",              hl.dsp.workspace.toggle_special("magic"),
+        { description = "The pocket workspace" })
+hl.bind(mod .. " + SHIFT + Return", hl.dsp.window.move({ workspace = "special:magic" }),
+        { description = "Put the window in the pocket" })
 
 -- Dragging and resizing with the mouse
-hl.bind(mod .. " + mouse:272", hl.dsp.window.drag(),   { mouse = true })
-hl.bind(mod .. " + mouse:273", hl.dsp.window.resize(), { mouse = true })
+hl.bind(mod .. " + mouse:272", hl.dsp.window.drag(),   { mouse = true, description = "Drag the window" })
+hl.bind(mod .. " + mouse:273", hl.dsp.window.resize(), { mouse = true, description = "Resize the window" })
 
 -- Multimedia keys.
 -- locked means they work on a locked screen, repeating means while held.
-hl.bind("XF86AudioRaiseVolume",  hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+"), { locked = true, repeating = true })
-hl.bind("XF86AudioLowerVolume",  hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"),      { locked = true, repeating = true })
-hl.bind("XF86AudioMute",         hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),     { locked = true })
-hl.bind("XF86AudioMicMute",      hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"),   { locked = true })
-hl.bind("XF86MonBrightnessUp",   hl.dsp.exec_cmd("brightnessctl -e4 -n2 set 5%+"),                  { locked = true, repeating = true })
-hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("brightnessctl -e4 -n2 set 5%-"),                  { locked = true, repeating = true })
-hl.bind("XF86AudioPlay",         hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
-hl.bind("XF86AudioNext",         hl.dsp.exec_cmd("playerctl next"),       { locked = true })
-hl.bind("XF86AudioPrev",         hl.dsp.exec_cmd("playerctl previous"),   { locked = true })
+hl.bind("XF86AudioRaiseVolume",  hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+"), { locked = true, repeating = true, description = "Volume up" })
+hl.bind("XF86AudioLowerVolume",  hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"),      { locked = true, repeating = true, description = "Volume down" })
+hl.bind("XF86AudioMute",         hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),     { locked = true, description = "Mute" })
+hl.bind("XF86AudioMicMute",      hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"),   { locked = true, description = "Mute the microphone" })
+hl.bind("XF86MonBrightnessUp",   hl.dsp.exec_cmd("brightnessctl -e4 -n2 set 5%+"),                  { locked = true, repeating = true, description = "Brighter screen" })
+hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("brightnessctl -e4 -n2 set 5%-"),                  { locked = true, repeating = true, description = "Dimmer screen" })
+hl.bind("XF86AudioPlay",         hl.dsp.exec_cmd("playerctl play-pause"), { locked = true, description = "Play or pause" })
+hl.bind("XF86AudioNext",         hl.dsp.exec_cmd("playerctl next"),       { locked = true, description = "Next track" })
+hl.bind("XF86AudioPrev",         hl.dsp.exec_cmd("playerctl previous"),   { locked = true, description = "Previous track" })
 
 --------------------------------------------------------------------------
 -- WINDOW RULES

@@ -55,10 +55,32 @@ element {
     spacing:       10px;
 }
 
-element selected {
+/* The state colours have to be spelled out. Setting only "element selected"
+ * leaves the ordinary rows to rofi's built-in default theme, which paints them
+ * cream with dark text - so the menu came up as a pale block sitting inside a
+ * dark window. The states are named <row state>.<entry state>: normal rows,
+ * every other row, the highlighted one. */
+element normal.normal,
+element alternate.normal {
+    background-color: transparent;
+    text-color:       @text;
+}
+
+element selected.normal,
+element selected.active,
+element selected.urgent {
     background-color: @accent;
     text-color:       @base;
 }
 
-element-icon { size: 22px; }
-element-text { vertical-align: 0.5; }
+/* An "active" entry is the current window in the switcher. */
+element normal.active,
+element alternate.active {
+    background-color: transparent;
+    text-color:       @accent;
+}
+
+element-icon { size: 22px; background-color: transparent; }
+/* inherit, not @text: without it the text keeps one colour and stays
+ * unreadable on the highlighted row. */
+element-text { vertical-align: 0.5; background-color: transparent; text-color: inherit; }

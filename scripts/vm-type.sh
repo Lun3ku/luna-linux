@@ -75,10 +75,18 @@ def press(codes):
 f.readline()            # the server greeting
 call("qmp_capabilities")
 
+MODS = {"ctrl", "alt", "shift", "meta_l", "meta_r"}
+
 for item in items:
-    if "+" in item and len(item) > 1:
-        # A combination: every key is pressed at once, as in ctrl+alt+f2.
-        press([p.strip() for p in item.split("+") if p.strip()])
+    parts = [p.strip() for p in item.split("+") if p.strip()]
+    # A combination is recognised by starting with a modifier, not merely by
+    # containing a plus. Anything with a "+" in it used to be taken for one,
+    # which made it impossible to type a line of text that happened to contain
+    # a plus - a Hyprland binding such as "SUPER + F9", for instance, which is
+    # exactly what one wants to type into a config while testing.
+    if len(parts) > 1 and parts[0] in MODS and all(q in KEYS or len(q) == 1 for q in parts):
+        # Every key is pressed at once, as in ctrl+alt+f2.
+        press(parts)
     elif item in KEYS:
         press([item])
     else:
