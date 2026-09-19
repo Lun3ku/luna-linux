@@ -46,6 +46,7 @@ wsl -d LunaBuild -u root -- bash '/mnt/c/Users/anyah/Documents/Claudes work/luna
 | `lint-configs.sh` | Checks the syntax of every Luna config. A broken config does not show up as a build error but as a broken desktop. |
 | `build-pkgs.sh` | Builds the `luna-*` packages and updates the local repository. |
 | `build-iso.sh` | Syncs the profile to ext4 and runs `mkarchiso`. |
+| `publish-repo.sh` | Publishes the signed repository to GitHub Pages. The one script here that runs in Git Bash on Windows rather than inside LunaBuild, because pushing needs the Windows credential store. |
 | `test-iso.sh` | Boots the built image in QEMU. |
 | `test-install-auto.sh` | Walks through the installer automatically with default answers. A regression test. |
 | `vm-screenshot.sh` | Takes a screenshot of the VM over QMP. |
@@ -155,6 +156,46 @@ Creating the key from scratch (needed once, or after losing it):
 ```bash
 ./scripts/make-signing-key.sh
 ```
+
+## Updates over the network
+
+The `luna-*` packages are served from GitHub Pages at
+
+```
+https://lun3ku.github.io/luna-linux/$arch
+```
+
+and that is the `Server` the installer writes into `/etc/pacman.conf` on the
+installed system, so `sudo pacman -Syu` updates Luna's own packages along with
+everything else. Publishing a new set is one command:
+
+```bash
+./scripts/publish-repo.sh
+```
+
+It rebuilds the `repo` branch from scratch and force-pushes it. The branch
+holds compiled packages and nothing else; keeping their history would grow the
+repository by the size of the whole set on every release, and nobody wants to
+read an old copy. The code's history on `main` is never touched by it.
+
+Two details that are easy to get wrong:
+
+- **The database files are published as real files, not symlinks.** `repo-add`
+  leaves `luna.db` as a symlink to `luna.db.tar.gz`, and GitHub Pages does not
+  follow symlinks - it would serve fourteen bytes reading `luna.db.tar.gz` and
+  pacman would report a corrupted database. `publish-repo.sh` dereferences them
+  and refuses to publish if a symlink survives.
+- **`pkgrel` comes from the package's own commit count**, set by
+  `build-pkgs.sh` while it builds. Without that every build would be `0.1.0-1`
+  with different contents inside, pacman would see no reason to download
+  anything, and the whole repository would be decorative. It follows that the
+  repository should be published from committed state.
+
+The copy of the repository on the installation medium stays there - it is what
+`pacstrap` reads during an installation, so installing never depends on the
+site being up. It is not copied onto the disk: it is a snapshot of the day the
+image was built, and pacman would only get a second source that can never
+change.
 
 ## How to add a package
 

@@ -134,6 +134,19 @@ for name in "${names[@]}"; do
   cp -rT "$src" "$BUILD/$name"
   chown -R builder:builder "$BUILD/$name"
 
+  # pkgrel is set from the number of commits that have touched this package.
+  # Without it every build comes out as 0.1.0-1 with different contents inside,
+  # and pacman on an installed machine sees no reason to fetch anything: the
+  # network repository would serve new packages that nobody ever downloads.
+  # The count only ever grows, and only when the package really changed - which
+  # also means the repository should be published from committed state, or two
+  # different builds can end up sharing a version.
+  rel=$(git -C "$LUNA_SRC" rev-list --count HEAD -- "pkg/$name" 2>/dev/null || echo 0)
+  (( rel > 0 )) || rel=1
+  sed -i "s/^pkgrel=.*/pkgrel=$rel/" "$BUILD/$name/PKGBUILD"
+  grep -q "^pkgrel=$rel$" "$BUILD/$name/PKGBUILD" || die "$name: pkgrel was not set - does the PKGBUILD still declare one?"
+  msg "  pkgrel $rel"
+
   # -d (--nodeps): the dependencies of our packages are what the installed
   # system needs, not what the build host needs. Without this flag makepkg
   # would try to drag the whole of Hyprland in here.

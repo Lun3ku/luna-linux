@@ -29,7 +29,10 @@ BACKTITLE="Luna Linux Installer"
 # basic colour names, but the terminal renders them with the Luna palette.
 export DIALOGRC=${DIALOGRC:-/usr/share/luna/dialogrc}
 LOG=/var/log/luna-install.log
-REPO_DIR=/usr/share/luna/repo          # the local repository on the image
+# Where an installed system looks for luna-* updates. The $arch here is
+# pacman's own variable and has to reach the file unexpanded, which is why it
+# is written in single quotes and passed through printf rather than echoed.
+REPO_URL='https://lun3ku.github.io/luna-linux/$arch'
 
 # The user's answers are collected here.
 declare -A CFG=(
@@ -552,14 +555,11 @@ do_configure() {
     runsh "sed -i 's/^#Color\$/Color/;s/^#VerbosePkgLists\$/VerbosePkgLists/' /mnt/etc/pacman.conf"
     runsh "grep -q '^ParallelDownloads' /mnt/etc/pacman.conf || sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 5/' /mnt/etc/pacman.conf"
 
-    # The local repository moves onto the installed system: otherwise the
-    # luna-* packages would be left without a source of updates. A temporary
-    # measure until there is a real repository on the network.
-    if [[ -d $REPO_DIR ]]; then
-        run mkdir -p /mnt"$REPO_DIR"
-        runsh "cp -a '$REPO_DIR'/. /mnt'$REPO_DIR'/"
-        runsh "printf '\n[luna]\nSigLevel = Required DatabaseOptional\nServer = file://%s\n' '$REPO_DIR' >> /mnt/etc/pacman.conf"
-    fi
+    # The installed system takes its luna-* updates over the network. The copy
+    # on the installation medium is what pacstrap just read, and it stays there:
+    # it is a snapshot of the day the image was built, so putting it on the disk
+    # as well would only offer pacman a second source that can never change.
+    runsh "printf '\n[luna]\nSigLevel = Required DatabaseOptional\nServer = %s\n' '$REPO_URL' >> /mnt/etc/pacman.conf"
 
     # mkinitcpio has two styles of hooks, the older udev one and the systemd
     # one that is now the default, and they use different names for the same

@@ -1432,3 +1432,86 @@ text keeps one colour and turns unreadable on the highlighted row.
 The general point is that a theme which sets only the states it happens to
 think of inherits the rest from somewhere, and "somewhere" is rarely the same
 palette.
+
+## The repository on the network, and two things that would have made it useless
+
+Until now an installed Luna carried its own `[luna]` repository as a directory
+on the disk, copied off the installation medium, with
+`Server = file:///usr/share/luna/repo` in `pacman.conf`. `pacman -Syu` worked
+and updated everything from the Arch mirrors, and Luna's own packages sat at
+whatever version the image had been built with, for ever.
+
+It is now served from GitHub Pages:
+
+```
+https://lun3ku.github.io/luna-linux/$arch
+```
+
+**Why Pages rather than Releases.** A release asset is the natural home for a
+2 GiB image, and a poor home for a package repository: updating it means
+uploading a dozen files, and without the GitHub CLI installed that is a dozen
+drag-and-drops through a browser, every time. Pages is a plain static
+directory, and updating it is a git push, which already works here. The
+`repo` branch is rebuilt from scratch and force-pushed on every publish, so the
+repository does not grow by 26 MiB of binaries per release, and `main` never
+sees any of it.
+
+Two things were found before anything was published, and either would have
+been quietly fatal.
+
+### The database is a symlink
+
+`repo-add` leaves the repository looking like this:
+
+```
+luna.db -> luna.db.tar.gz
+luna.files -> luna.files.tar.gz
+```
+
+which is invisible over `file://` and fatal over HTTP: **GitHub Pages does not
+follow symlinks.** It serves the link itself, so pacman asking for `luna.db`
+would have received fourteen bytes reading `luna.db.tar.gz` and reported a
+corrupted database on every machine.
+
+`publish-repo.sh` copies with `cp -L` and then refuses to publish if
+`find -type l` finds anything at all. It also checks that the database
+describes exactly the packages being published and that every one of them
+carries a `%PGPSIG%`, because a database that lists a package which is not
+there turns every `pacman -Syu` everywhere into a 404.
+
+### Every package was version 0.1.0-1, for ever
+
+This is the one that matters. All seven `luna-*` packages had `pkgver=0.1.0`
+and `pkgrel=1` written into the PKGBUILD, and nothing ever changed them. A
+rebuild produced a package with the same version and different contents
+inside.
+
+pacman compares versions. Publishing a repository full of packages whose
+versions have not moved means every installed machine checks, finds nothing
+newer, and does nothing. The network repository would have been decorative -
+working perfectly, serving files correctly, and never updating anybody.
+
+`pkgrel` is now derived, in `build-pkgs.sh`, from the number of commits that
+have touched that package's directory:
+
+```bash
+rel=$(git -C "$LUNA_SRC" rev-list --count HEAD -- "pkg/$name")
+sed -i "s/^pkgrel=.*/pkgrel=$rel/" "$BUILD/$name/PKGBUILD"
+```
+
+It only grows, and only when the package actually changed. It is set on the
+copy that makepkg builds rather than in the PKGBUILD itself, because the copy
+is not a git repository and the PKGBUILD cannot work it out for itself; the
+committed PKGBUILD keeps `pkgrel=1` for anyone building one by hand.
+
+The consequence worth remembering: **publish from committed state.** Two
+builds from the same commit with different uncommitted edits share a version,
+which is the same trap in a smaller form.
+
+### What stays where
+
+The copy of the repository on the installation medium stays: `pacstrap` reads
+it during installation, so installing does not depend on the site being
+reachable. It is no longer copied onto the disk - that copy could never change,
+and offering pacman a second, permanently stale source is worse than offering
+it none.
