@@ -44,6 +44,7 @@ declare -A CFG=(
     # bootloader has to be told to unlock.
     [rootpart]="" [encrypt]="no" [passphrase]=""
     [hibernate]="no" [swapsize]="" [resumeoffset]="" [initstyle]="udev"
+    [nvidia]="no" [nvidiapkg]=""
 )
 
 log()  { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >> "$LOG"; }
@@ -90,6 +91,45 @@ is_laptop() {
 # Total RAM rounded up to whole gibibytes. Hibernation writes all of it, so
 # the swap file cannot be smaller.
 ram_gib() { awk '/^MemTotal:/ {printf "%d", ($2 + 1048575) / 1048576}' /proc/meminfo; }
+
+# Overridable only so the two functions below can be tested against a made-up
+# tree of devices; nothing ever sets it in normal use.
+PCI_DEVICES=${PCI_DEVICES:-/sys/bus/pci/devices}
+
+# True when the machine has an NVIDIA display adapter.
+#
+# Read out of sysfs rather than with lspci, because pciutils is not on the
+# installation medium. A check that needs a package nobody installed is a
+# check that answers "no NVIDIA here" on every machine in the world.
+has_nvidia() {
+    local dev
+    for dev in "$PCI_DEVICES"/*; do
+        [[ -r $dev/class && -r $dev/vendor ]] || continue
+        # 0x0300 is a VGA controller, 0x0302 a second GPU in a laptop.
+        [[ $(< "$dev/class") == 0x03* ]] || continue
+        [[ $(< "$dev/vendor") == 0x10de ]] && return 0
+    done
+    return 1
+}
+
+# Which driver package suits the card that is actually in the machine.
+#
+# NVIDIA requires the open kernel modules from the 50xx series on, recommends
+# them for Turing and Ampere, and does not support them at all on anything
+# older. Device ids from Turing onwards start at 0x1e00, which is the only
+# thing here that can be read without the driver already being loaded.
+# https://wiki.hypr.land/Nvidia/
+nvidia_driver() {
+    local dev id
+    for dev in "$PCI_DEVICES"/*; do
+        [[ -r $dev/class && -r $dev/vendor && -r $dev/device ]] || continue
+        [[ $(< "$dev/class") == 0x03* ]] || continue
+        [[ $(< "$dev/vendor") == 0x10de ]] || continue
+        id=$(< "$dev/device")
+        if (( id >= 0x1e00 )); then echo nvidia-open-dkms; return; fi
+    done
+    echo nvidia-dkms
+}
 
 #---------------------------------------------------------------------------
 # Screens
@@ -318,6 +358,20 @@ screen_profile() {
         minimal "Base system and command line only") || cancel_guard $?
 }
 
+screen_graphics() {
+    # Only asked when there is something to ask about: a desktop profile, on a
+    # machine with an NVIDIA card in it.
+    [[ ${CFG[profile]} == desktop ]] || return 0
+    has_nvidia || return 0
+    CFG[nvidiapkg]=$(nvidia_driver)
+    if ask --title "Graphics" --yes-label "Install" --no-label "Use nouveau" \
+            --yesno "\nAn NVIDIA card was found.\n\nHyprland runs on the open-source nouveau driver, but slowly,\nand on the newest cards barely at all. The proprietary driver\nis what gives the card its real performance.\n\nThe package is ${CFG[nvidiapkg]}. It is built for your kernel\nduring the installation, which adds a few minutes to it.\n\nInstall the proprietary driver?" 17 72; then
+        CFG[nvidia]=yes
+    else
+        CFG[nvidia]=no
+    fi
+}
+
 screen_summary() {
     local mode; mode=$(is_uefi && echo UEFI || echo BIOS)
     local enc hib
@@ -325,6 +379,18 @@ screen_summary() {
     else enc="none"; fi
     if [[ ${CFG[hibernate]} == yes ]]; then hib="swap file, ${CFG[swapsize]} GiB"
     else hib="no (zram swap only)"; fi
+    # Shown only on a machine that has an NVIDIA card, because on any other
+    # one the line would be a puzzle rather than information.
+    local gfx=""
+    if has_nvidia; then
+        if [[ ${CFG[nvidia]} == yes ]]; then
+            gfx="  Graphics    ${CFG[nvidiapkg]}\n"
+        else
+            gfx="  Graphics    nouveau, the open-source driver\n"
+        fi
+    fi
+    local h=22
+    [[ -n $gfx ]] && h=23
     local layout
     if [[ ${CFG[scheme]} == auto ]]; then
         layout="whole disk, erased"
@@ -340,11 +406,12 @@ screen_summary() {
   Hibernation ${hib}\n\
   Kernel      ${CFG[kernel]}\n\
   Packages    ${CFG[profile]}\n\
+${gfx}\
   Host name   ${CFG[hostname]}\n\
   User        ${CFG[user]}\n\
   Time zone   ${CFG[timezone]}\n\
   Keymap      ${CFG[keymap]}\n\n\
-Writing starts now. Data on the disk will be lost.\n" 22 66
+Writing starts now. Data on the disk will be lost.\n" $h 66
     cancel_guard $?
 }
 
@@ -504,6 +571,16 @@ do_pacstrap() {
     # the target the initramfs cannot open the container it just created.
     [[ ${CFG[encrypt]} == yes ]] && pkgs+=(cryptsetup)
 
+    # The NVIDIA driver, when the card is there and the answer was yes. The
+    # DKMS variant, so the module is rebuilt for whichever kernel is running;
+    # the headers it needs are already in the list above. nvidia-utils is the
+    # userspace half and nothing renders without it, egl-wayland is what lets
+    # EGL and Wayland speak to each other, and libva-nvidia-driver is hardware
+    # video decoding. https://wiki.hypr.land/Nvidia/
+    if [[ ${CFG[nvidia]} == yes ]]; then
+        pkgs+=("${CFG[nvidiapkg]}" nvidia-utils egl-wayland libva-nvidia-driver)
+    fi
+
     # The microcode matches the actual CPU vendor: the other one would merely
     # take up space and confuse the bootloader output.
     if grep -qi 'GenuineIntel' /proc/cpuinfo; then pkgs+=(intel-ucode)
@@ -629,6 +706,29 @@ do_configure() {
             luksuuid=$(blkid -s UUID -o value "${CFG[rootpart]}")
             printf 'luna UUID=%s /crypto_keyfile.bin x-initrd.attach\n' "$luksuuid" >> /mnt/etc/crypttab
             log "crypttab: luna UUID=$luksuuid"
+        fi
+    fi
+
+    # Early KMS for NVIDIA: the modules load inside the initramfs instead of
+    # part way through the boot, so the display mode stops changing under
+    # plymouth and the console comes up at the right resolution.
+    #
+    # Left out when hibernation was chosen. Loading the NVIDIA modules early is
+    # documented to stop resume from hibernation working - the machine boots
+    # instead of resuming - and between a cosmetic improvement and a feature
+    # the user asked for explicitly, the feature wins.
+    # https://wiki.hypr.land/Nvidia/
+    if [[ ${CFG[nvidia]} == yes ]]; then
+        if [[ ${CFG[hibernate]} == yes ]]; then
+            log "nvidia: early KMS left out, hibernation was chosen"
+        else
+            runsh "sed -i '/^MODULES=/ s/)/ nvidia nvidia_modeset nvidia_uvm nvidia_drm)/' /mnt/etc/mkinitcpio.conf"
+            if ! grep -q '^MODULES=.*nvidia_drm' /mnt/etc/mkinitcpio.conf; then
+                log "FAILED: nvidia modules missing from: $(grep '^MODULES=' /mnt/etc/mkinitcpio.conf)"
+                echo "mkinitcpio MODULES: the nvidia modules were not added" > "$FAILMARK"
+                exit 1
+            fi
+            log "modules: $(grep '^MODULES=' /mnt/etc/mkinitcpio.conf)"
         fi
     fi
 
@@ -786,6 +886,7 @@ main() {
     screen_user
     screen_kernel
     screen_profile
+    screen_graphics
     screen_summary
 
     install_all | dialog --backtitle "$BACKTITLE" --title "Installing Luna" \

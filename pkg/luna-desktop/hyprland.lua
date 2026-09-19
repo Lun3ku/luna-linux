@@ -59,6 +59,23 @@ hl.env("QT_QPA_PLATFORMTHEME", "qt6ct")
 hl.env("MOZ_ENABLE_WAYLAND", "1")
 hl.env("ELECTRON_OZONE_PLATFORM_HINT", "auto")
 
+-- NVIDIA needs three more, and any other card needs them not to be set:
+-- LIBVA_DRIVER_NAME=nvidia on an Intel machine points libva at a driver that
+-- is not installed and takes hardware video decoding away. So the card is
+-- detected rather than assumed. /sys/module/nvidia/version exists only while
+-- the proprietary driver is loaded, which is exactly the condition these
+-- variables belong to - nouveau wants none of them.
+-- https://wiki.hypr.land/Nvidia/
+local nvidia = io.open("/sys/module/nvidia/version")
+if nvidia then
+    nvidia:close()
+    hl.env("LIBVA_DRIVER_NAME", "nvidia")
+    hl.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia")
+    -- The backend for libva-nvidia-driver. Without it the VA-API driver takes
+    -- a path that expects an X server to be running.
+    hl.env("NVD_BACKEND", "direct")
+end
+
 --------------------------------------------------------------------------
 -- AUTOSTART
 -- Empty, and deliberately so. The panel, the notifications, the wallpaper,
