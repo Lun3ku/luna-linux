@@ -65,6 +65,10 @@ t 'lunatest' ret      # Password
 t 'lunatest' ret      # Password again
 t ret                 # Kernel  -> linux
 t ret                 # Profile -> desktop
+# There is no keystroke for the graphics screen on purpose. It only appears on
+# a machine with an NVIDIA card, and QEMU has none, so under this test it is
+# never shown. To exercise it, run the installer by hand with PCI_DEVICES
+# pointed at a fabricated tree of devices - see has_nvidia in luna-install.
 bash "$L/vm-screenshot.sh" "$SHOT/auto-summary.png" >/dev/null
 t left ret            # Summary -> Install
 
