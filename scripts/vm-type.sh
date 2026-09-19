@@ -84,7 +84,11 @@ for item in items:
     # which made it impossible to type a line of text that happened to contain
     # a plus - a Hyprland binding such as "SUPER + F9", for instance, which is
     # exactly what one wants to type into a config while testing.
-    if len(parts) > 1 and parts[0] in MODS and all(q in KEYS or len(q) == 1 for q in parts):
+    # A leading modifier is the whole test. Requiring the other parts to be
+    # known key names was tried and was wrong: QEMU has qcodes for far more
+    # keys than the list above, "slash" among them, so meta_l+slash was
+    # typed out as text instead of pressed.
+    if len(parts) > 1 and parts[0] in MODS:
         # Every key is pressed at once, as in ctrl+alt+f2.
         press(parts)
     elif item in KEYS:

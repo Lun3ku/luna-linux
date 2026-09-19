@@ -22,4 +22,33 @@ package() {
   # Printing works out of the box, see the comment in the preset.
   install -Dm644 "$srcdir/90-luna-apps.preset" \
     "$pkgdir/usr/lib/systemd/system-preset/90-luna-apps.preset"
+
+  # cups brings avahi in with it, and avahi puts three entries in the
+  # application menu - "Avahi Zeroconf Browser", "Avahi SSH Server Browser",
+  # "Avahi VNC Server Browser". They are diagnostic tools for a service the
+  # user never asked for, and they sit in the launcher between Firefox and the
+  # file manager.
+  #
+  # A desktop entry in the user's own directory replaces the system one of the
+  # same name, so these hide them without touching the avahi package and
+  # without writing into /usr/local, which belongs to whoever administers the
+  # machine rather than to us. Deleting the file brings the entry back.
+  local apps="$pkgdir/etc/skel/.local/share/applications"
+  install -d "$apps"
+  local id name
+  for id in "avahi-discover:Avahi Zeroconf Browser" \
+            "bssh:Avahi SSH Server Browser" \
+            "bvnc:Avahi VNC Server Browser"; do
+    name=${id#*:}
+    id=${id%%:*}
+    printf '%s\n' \
+      '[Desktop Entry]' \
+      'Type=Application' \
+      "Name=$name" \
+      "Exec=$id" \
+      '# Hidden by luna-apps: a diagnostic tool for a service nobody asked' \
+      '# for. Delete this file to get the entry back.' \
+      'NoDisplay=true' > "$apps/$id.desktop"
+    chmod 644 "$apps/$id.desktop"
+  done
 }
