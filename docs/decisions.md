@@ -1299,3 +1299,136 @@ grep -rl '^#!.*bash' "$LUNA_SRC/pkg" "$LUNA_SRC/iso" "$LUNA_SRC/scripts"
 If that had matched nothing, the loop would have run zero times, returned 0 and
 printed OK for ever. It was run on its own to confirm it finds 22 scripts,
 including the two written that evening.
+
+## Bluetooth was installed and never started
+
+`luna-desktop` pulled in bluez, bluez-utils and blueman. The panel had a
+bluetooth button with a tooltip listing connected devices. `bluetoothd` was not
+enabled anywhere, so on a freshly installed system none of it worked.
+
+This is the same shape as hyprsunset, and it is worth naming the shape: adding
+a package to a dependency list feels like adding a feature, and for a library
+it is. For anything with a daemon it is half the job, and the missing half is
+invisible until somebody tries to use it.
+
+Enabling it unconditionally turned out to be safe, which was worth checking
+rather than assuming, because a unit that fails on a desktop with no adapter
+would show up in the panel's failed-services count for ever:
+
+- `bluetooth.service` carries `ConditionPathIsDirectory=/sys/class/bluetooth`,
+  so with no adapter it is skipped rather than failed.
+- It is `WantedBy=bluetooth.target`, and that target is not part of any boot
+  sequence. What pulls it in is systemd's own udev rule, in `99-systemd.rules`:
+  `SUBSYSTEM=="bluetooth", TAG+="systemd", ENV{SYSTEMD_WANTS}+="bluetooth.target"`.
+
+So a desktop with no Bluetooth starts nothing at all, and plugging a dongle in
+starts the daemon by itself. Both facts were read out of the files in the image
+being built rather than recalled.
+
+The same audit found nothing else missing: paccache, reflector, fwupd-refresh,
+the snapper timers, grub-btrfsd, systemd-oomd and timesyncd are all in
+`90-luna.preset` already, and cups got its own preset when `luna-apps` was
+added.
+
+## is-enabled says disabled while the unit is running
+
+While checking the tldr timer on the installed system:
+
+```
+$ systemctl --user is-enabled luna-tldr-update.timer
+disabled
+```
+
+which looks like the feature simply did not work. It does work:
+
+```
+$ systemctl --user is-active luna-tldr-update.timer
+active
+$ systemctl --user list-timers --all
+Sat 2026-09-26 00:14:23 UTC  6 days  ...  luna-tldr-update.timer
+```
+
+It had already run, two minutes after the first login, exactly as intended.
+
+The explanation is that `is-enabled` reports on symlinks in `/etc/systemd`,
+while Luna enables its user units with symlinks shipped in
+`/usr/lib/systemd/user/<target>.wants/`. systemd honours those - it is how the
+panel, the notifications and the wallpaper have always started - but
+`is-enabled` does not count them as "enabled".
+
+The control that proves this is waybar, which is unquestionably running:
+
+```
+$ systemctl --user is-enabled waybar.service
+disabled
+$ systemctl --user is-active waybar.service
+active
+```
+
+So `is-enabled` is the wrong question to ask about anything Luna ships. Ask
+`is-active`, or `list-timers` for a timer.
+
+## A cheat sheet that said "Super+1  __lua 56"
+
+`Super+/` opened, rofi came up, and every line of it was useless:
+
+```
+Super+1     __lua 56
+Super+2     __lua 60
+Print       __lua 34
+```
+
+The list is built from `hyprctl binds -j`, which was the right decision - a
+cheat sheet kept by hand drifts the first time somebody edits a binding. But
+Hyprland's Lua config registers each binding as a Lua callback, so the
+dispatcher it reports is the literal string `__lua` and the argument is the
+number of that callback. There is nothing there for a person to read.
+
+Hyprland does keep a description per binding. Whether the Lua API accepted one
+was settled by trying it on the running system rather than by reading around
+it: append a binding with a description to `~/.config/hypr/hyprland.lua`,
+`hyprctl reload`, and ask for it back.
+
+```
+$ hyprctl binds -j | jq -c '.[] | select(.key=="F9")'
+{... "has_description":true, ... "description":"a test label",
+ "dispatcher":"__lua","arg":"126"}
+```
+
+So every binding in `hyprland.lua` now carries a description, and `luna-keys`
+prefers it, falling back to the dispatcher for anything without one - which is
+what a legacy `hyprland.conf` would report, and is readable enough.
+
+Two smaller things came out of that experiment:
+
+- Hyprland reports a broken config in a banner across the top of the screen
+  rather than by refusing to reload. The first attempt wrote `"SUPER x2b F9"`
+  into the config, because `printf \x2b` without quotes prints `x2b`, and the
+  banner said so precisely: `Unknown keysym "SUPER x2b F9", did you forget a +?`
+- `vm-type.sh` could not type that line at all. It treated any argument
+  containing a `+` as a key combination, so `"SUPER + F9"` became a keypress
+  instead of text. It now recognises a combination by its leading modifier.
+  Getting the text in took a detour through base32, whose alphabet, unlike
+  base64's, has no `+` in it.
+
+## The menu was painting itself with somebody else's colours
+
+Opening the cheat sheet also showed what the launcher had been doing all along:
+cream rows with dark text inside a dark purple window, with the highlighted row
+a washed-out grey. `Super+R` and `Super+Tab` looked exactly the same, so this
+was not new - it had simply never been looked at against the rest of the
+theme.
+
+`rofi-luna.rasi` styled `window`, `inputbar` and `element selected`, and said
+nothing about ordinary rows. rofi fills the gap from its own built-in theme,
+which is light. The `background-color: transparent` in the `*` block does not
+help: a more specific default beats a general rule.
+
+The fix is to name every state - `normal.normal`, `alternate.normal`,
+`selected.*`, and the `active` ones the window switcher uses for the current
+window - and to give `element-text` `text-color: inherit`, without which the
+text keeps one colour and turns unreadable on the highlighted row.
+
+The general point is that a theme which sets only the states it happens to
+think of inherits the rest from somewhere, and "somewhere" is rarely the same
+palette.
